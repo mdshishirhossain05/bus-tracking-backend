@@ -294,9 +294,14 @@ export async function deleteStop(req: Request, res: Response) {
 
   const id = idParsed.data;
 
-  const dependencies = await prisma.stop.findUnique({
+  const stop = await prisma.stop.findUnique({
     where: { id },
     select: {
+      id: true,
+      stopName: true,
+      stopCode: true,
+      lat: true,
+      lng: true,
       _count: {
         select: {
           routeStops: true,
@@ -307,21 +312,16 @@ export async function deleteStop(req: Request, res: Response) {
     },
   });
 
-  /*
-   * DELETE is intentionally idempotent.
-   * If the UI is holding a stale row and the database row is already gone,
-   * returning success lets the frontend remove the stale row permanently
-   * instead of showing a confusing "Stop not found" toast.
-   */
-  if (!dependencies) {
+  if (!stop) {
     return res.json({
       message: "Stop was already deleted.",
       deleted: false,
       alreadyDeleted: true,
+      stopId: id,
     });
   }
 
-  const { routeStops, schedules, stopArrivals } = dependencies._count;
+  const { routeStops, schedules, stopArrivals } = stop._count;
 
   if (routeStops > 0 || schedules > 0 || stopArrivals > 0) {
     return res.status(409).json({
@@ -334,11 +334,34 @@ export async function deleteStop(req: Request, res: Response) {
     });
   }
 
-  await prisma.stop.delete({ where: { id } });
+  await prisma.stop.delete({
+    where: { id },
+  });
+
+  const stillExists = await prisma.stop.findUnique({
+    where: { id },
+    select: { id: true },
+  });
+
+  if (stillExists) {
+    return res.status(500).json({
+      message:
+        "Stop delete operation did not persist. Please check database connection and deployment environment.",
+      stopId: id,
+    });
+  }
 
   return res.json({
     message: "Stop deleted successfully",
     deleted: true,
     alreadyDeleted: false,
+    stopId: id,
+    deletedStop: {
+      id: stop.id,
+      stopName: stop.stopName,
+      stopCode: stop.stopCode,
+      lat: Number(stop.lat),
+      lng: Number(stop.lng),
+    },
   });
 }
