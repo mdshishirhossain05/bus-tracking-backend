@@ -1,4 +1,8 @@
-import express from "express";
+import express, {
+  type NextFunction,
+  type Request,
+  type Response,
+} from "express";
 import cors from "cors";
 import helmet from "helmet";
 import cookieParser from "cookie-parser";
@@ -36,13 +40,62 @@ function getCorsConfig() {
   };
 }
 
+function isApiRequest(req: Request) {
+  return (
+    req.path.startsWith("/api/") ||
+    req.originalUrl.startsWith("/api/") ||
+    req.path.startsWith(`/api/${env.API_VERSION}`) ||
+    req.originalUrl.startsWith(`/api/${env.API_VERSION}`)
+  );
+}
+
+function setApiNoStoreHeaders(res: Response) {
+  res.setHeader(
+    "Cache-Control",
+    "no-store, no-cache, must-revalidate, proxy-revalidate, max-age=0, s-maxage=0",
+  );
+  res.setHeader("Pragma", "no-cache");
+  res.setHeader("Expires", "0");
+  res.setHeader("Surrogate-Control", "no-store");
+  res.removeHeader("ETag");
+}
+
+function noStoreApiResponses(
+  req: Request,
+  res: Response,
+  next: NextFunction,
+) {
+  if (!isApiRequest(req)) {
+    return next();
+  }
+
+  /*
+   * Admin/API responses are user-specific and mutation-sensitive.
+   * Never allow browser/proxy conditional cache responses such as 304.
+   */
+  delete req.headers["if-none-match"];
+  delete req.headers["if-modified-since"];
+
+  setApiNoStoreHeaders(res);
+  return next();
+}
+
 export function createApp() {
   const app = express();
   const { allowedOrigins, allowAllOrigins } = getCorsConfig();
 
   app.set("trust proxy", 1);
 
+  /*
+   * Permanent API freshness fix:
+   * Express generates weak ETags by default. Browsers then send If-None-Match,
+   * and mutation-sensitive admin GET endpoints can return 304 Not Modified.
+   * That caused deleted stops to reappear from browser cache.
+   */
+  app.disable("etag");
+
   app.use(requestContext);
+  app.use(noStoreApiResponses);
 
   const corsMiddleware = cors({
     origin: (origin, cb) => {
