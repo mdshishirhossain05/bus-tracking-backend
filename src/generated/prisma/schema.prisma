@@ -1,0 +1,194 @@
+// prisma/schema.prisma
+
+generator client {
+  provider = "prisma-client-js"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum UserRole {
+  ADMIN
+  DRIVER
+  PASSENGER
+}
+
+enum TripStatus {
+  PLANNED
+  RUNNING
+  ENDED
+}
+
+enum DayType {
+  WEEKDAY
+  WEEKEND
+}
+
+model User {
+  id           String   @id @default(uuid())
+  fullName     String
+  email        String   @unique
+  passwordHash String
+  role         UserRole
+  isActive     Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  // Relations
+  driverTrips Trip[]    @relation("DriverTrips")
+  sessions    Session[]
+}
+
+model Session {
+  id     String @id @default(uuid())
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  revokedAt  DateTime?
+  createdAt  DateTime  @default(now())
+  lastSeenAt DateTime  @default(now())
+
+  refreshTokenHash String
+  refreshFamilyId  String
+
+  userAgentHash String
+  ipFirst       String
+  ipLast        String
+
+  roleSnapshot UserRole
+
+  @@index([userId])
+  @@index([revokedAt])
+  @@index([lastSeenAt])
+  @@index([refreshFamilyId])
+}
+
+model Bus {
+  id          String   @id @default(uuid())
+  busCode     String   @unique
+  plateNumber String?  @unique
+  capacity    Int?
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  trips Trip[]
+}
+
+model Route {
+  id          String   @id @default(uuid())
+  routeName   String   @unique
+  description String?
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  routeStops RouteStop[]
+  trips      Trip[]
+  schedules  Schedule[]
+}
+
+model Stop {
+  id        String   @id @default(uuid())
+  stopName  String
+  lat       Decimal  @db.Decimal(10, 7)
+  lng       Decimal  @db.Decimal(10, 7)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  routeStops   RouteStop[]
+  schedules    Schedule[]
+  stopArrivals StopArrival[]
+
+  @@index([stopName])
+}
+
+model RouteStop {
+  id                  String   @id @default(uuid())
+  routeId             String
+  stopId              String
+  stopOrder           Int
+  distanceFromStartKm Decimal? @db.Decimal(10, 3)
+
+  route Route @relation(fields: [routeId], references: [id], onDelete: Cascade)
+  stop  Stop  @relation(fields: [stopId], references: [id], onDelete: Cascade)
+
+  @@unique([routeId, stopOrder])
+  @@unique([routeId, stopId])
+  @@index([routeId])
+}
+
+model Trip {
+  id        String     @id @default(uuid())
+  busId     String
+  routeId   String
+  driverId  String
+  status    TripStatus @default(PLANNED)
+  startTime DateTime?
+  endTime   DateTime?
+  createdAt DateTime   @default(now())
+  updatedAt DateTime   @updatedAt
+
+  bus    Bus   @relation(fields: [busId], references: [id], onDelete: Restrict)
+  route  Route @relation(fields: [routeId], references: [id], onDelete: Restrict)
+  driver User  @relation("DriverTrips", fields: [driverId], references: [id], onDelete: Restrict)
+
+  locationLogs LocationLog[]
+  stopArrivals StopArrival[]
+
+  @@index([busId])
+  @@index([routeId])
+  @@index([driverId])
+  @@index([status])
+}
+
+model LocationLog {
+  id         String   @id @default(uuid())
+  tripId     String
+  lat        Decimal  @db.Decimal(10, 7)
+  lng        Decimal  @db.Decimal(10, 7)
+  speedKmh   Decimal? @db.Decimal(6, 2)
+  heading    Int?
+  accuracyM  Decimal? @db.Decimal(8, 2)
+  recordedAt DateTime
+  createdAt  DateTime @default(now())
+
+  trip Trip @relation(fields: [tripId], references: [id], onDelete: Cascade)
+
+  @@index([tripId])
+  @@index([recordedAt])
+}
+
+model Schedule {
+  id            String   @id @default(uuid())
+  routeId       String
+  stopId        String
+  dayType       DayType
+  scheduledTime DateTime @db.Time(0)
+
+  route Route @relation(fields: [routeId], references: [id], onDelete: Cascade)
+  stop  Stop  @relation(fields: [stopId], references: [id], onDelete: Cascade)
+
+  @@unique([routeId, stopId, dayType, scheduledTime])
+  @@index([routeId])
+  @@index([stopId])
+}
+
+model StopArrival {
+  id                String    @id @default(uuid())
+  tripId            String
+  stopId            String
+  scheduledTime     DateTime? @db.Time(0)
+  actualArrivalTime DateTime
+  delayMinutes      Int
+
+  trip Trip @relation(fields: [tripId], references: [id], onDelete: Cascade)
+  stop Stop @relation(fields: [stopId], references: [id], onDelete: Cascade)
+
+  @@unique([tripId, stopId])
+  @@index([tripId])
+  @@index([stopId])
+  @@index([actualArrivalTime])
+}

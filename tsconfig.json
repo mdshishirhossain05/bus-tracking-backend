@@ -1,0 +1,26 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "lib": ["ES2022"],
+
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+
+    "rootDir": "src",
+    "outDir": "dist",
+
+    "strict": true,
+    "skipLibCheck": true,
+    "esModuleInterop": true,
+
+    "types": ["node"],
+    "sourceMap": true,
+
+    "noUncheckedIndexedAccess": true,
+    "exactOptionalPropertyTypes": true,
+
+    "isolatedModules": true
+  },
+  "include": ["src/**/*.ts", "src/types/**/*.d.ts", "src/controllers/gpsIngest.controller.ts"],
+  "exclude": ["node_modules", "dist", "tests", "prisma", "prisma.config.ts"]
+}

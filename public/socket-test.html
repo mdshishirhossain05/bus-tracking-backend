@@ -1,0 +1,81 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <title>Bus Tracking Socket Test</title>
+  </head>
+  <body>
+    <h2>Socket Test</h2>
+
+    <label>Trip ID:</label>
+    <input id="tripId" style="width:420px" placeholder="paste tripId here" />
+    <button id="joinBtn">Join Trip</button>
+    <button id="leaveBtn">Leave Trip</button>
+
+    <pre
+      id="log"
+      style="background:#111;color:#0f0;padding:12px;height:360px;overflow:auto;"
+    ></pre>
+
+    <!-- ✅ Load Socket.IO client directly from YOUR server -->
+    <script src="/socket.io/socket.io.js"></script>
+
+    <script>
+      const logEl = document.getElementById("log");
+      const log = (msg) => {
+        const line = `[${new Date().toISOString()}] ${msg}`;
+        logEl.textContent += line + "\n";
+        logEl.scrollTop = logEl.scrollHeight;
+      };
+
+      // ✅ Same-origin connection (cookies automatically included)
+      const socket = io({
+        transports: ["websocket", "polling"],
+        withCredentials: true,
+      });
+
+      socket.on("connect", () => log("connected: " + socket.id));
+      socket.on("disconnect", (r) => log("disconnect: " + r));
+
+      // Socket.IO internal connection errors
+      socket.on("connect_error", (err) => {
+        log("connect_error: " + (err?.message || String(err)));
+      });
+
+      // ✅ Our server-side auth failure event
+      socket.on("auth_error", (data) => {
+        log("auth_error: " + JSON.stringify(data));
+      });
+
+      socket.on("connected", (m) => log("server event: " + JSON.stringify(m)));
+
+      //join denied
+      socket.on("join_denied", (m) => log("join_denied: " + JSON.stringify(m)));
+
+      // helpful join confirmations
+      socket.on("joined_trip", (m) => log("joined_trip: " + JSON.stringify(m)));
+      socket.on("left_trip", (m) => log("left_trip: " + JSON.stringify(m)));
+
+      // your realtime events
+      socket.on("trip_status", (m) => log("trip_status: " + JSON.stringify(m)));
+      socket.on("bus_location_update", (m) =>
+        log("bus_location_update: " + JSON.stringify(m)),
+      );
+      socket.on("stop_arrival", (m) => log("stop_arrival: " + JSON.stringify(m)));
+
+      document.getElementById("joinBtn").onclick = () => {
+        const tripId = document.getElementById("tripId").value.trim();
+        if (!tripId) return alert("paste tripId");
+        socket.emit("join_trip", { tripId });
+        log("join_trip sent: " + tripId);
+      };
+
+      document.getElementById("leaveBtn").onclick = () => {
+        const tripId = document.getElementById("tripId").value.trim();
+        if (!tripId) return alert("paste tripId");
+        socket.emit("leave_trip", { tripId });
+        log("leave_trip sent: " + tripId);
+      };
+    </script>
+  </body>
+</html>

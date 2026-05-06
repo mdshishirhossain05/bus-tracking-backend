@@ -1,0 +1,120 @@
+name: CI
+
+on:
+  push:
+    branches:
+      - main
+      - develop
+  pull_request:
+    branches:
+      - main
+      - develop
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: bus_tracking_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd="pg_isready -U postgres -d bus_tracking_test"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=5
+
+      redis:
+        image: redis:7
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd="redis-cli ping"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=5
+
+    env:
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+      APP_NAME: bus-tracking-backend
+      NODE_ENV: test
+      PORT: 5000
+      API_VERSION: v1
+
+      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/bus_tracking_test
+      REDIS_URL: redis://localhost:6379
+
+      JWT_ACCESS_SECRET: test-access-secret-12345678901234567890
+      JWT_REFRESH_SECRET: test-refresh-secret-1234567890123456789
+
+      ACCESS_TOKEN_EXPIRES_IN: 15m
+      REFRESH_TOKEN_EXPIRES_IN: 7d
+
+      COOKIE_SECURE: false
+      COOKIE_SAMESITE: lax
+      COOKIE_DOMAIN: ""
+
+      CORS_ORIGIN: http://localhost:3000
+
+      DEFAULT_SPEED_KMH: 20
+      ARRIVAL_RADIUS_METERS: 80
+      LOCATION_DB_WRITE_INTERVAL_MS: 10000
+
+      RL_LOGIN_WINDOW_MS: 600000
+      RL_LOGIN_MAX: 20
+      RL_REFRESH_WINDOW_MS: 300000
+      RL_REFRESH_MAX: 120
+
+      STOPS_CACHE_TTL_MS: 300000
+      STOPS_CACHE_MAX_ENTRIES: 200
+
+      TRIP_STATE_TTL_SECONDS: 180
+      STOPS_CACHE_TTL_SECONDS: 300
+
+      TRIP_LOCK_TTL_MS: 10000
+      IDEMPOTENCY_TTL_SECONDS: 3600
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v5
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Generate Prisma Client
+        run: npx prisma generate
+
+      - name: Verify PostgreSQL is ready
+        run: |
+          for i in {1..20}; do
+            pg_isready -h localhost -p 5432 -U postgres -d bus_tracking_test && exit 0
+            echo "Waiting for PostgreSQL..."
+            sleep 2
+          done
+          echo "PostgreSQL did not become ready in time"
+          exit 1
+
+      - name: Apply Prisma schema
+        run: |
+          if [ -d "prisma/migrations" ] && [ "$(ls -A prisma/migrations)" ]; then
+            echo "Applying migrations with prisma migrate deploy..."
+            npx prisma migrate deploy
+          else
+            echo "No migrations found. Applying schema with prisma db push..."
+            npx prisma db push
+          fi
+
+      - name: Run tests
+        run: npm run test

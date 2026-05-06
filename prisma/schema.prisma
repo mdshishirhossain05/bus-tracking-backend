@@ -1,0 +1,592 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum UserRole {
+  ADMIN
+  DRIVER
+  PASSENGER
+}
+
+enum UserApprovalStatus {
+  PENDING_APPROVAL
+  APPROVED
+  REJECTED
+}
+
+enum UserRegistrationSource {
+  ADMIN
+  SELF
+}
+
+enum TripStatus {
+  PLANNED
+  RUNNING
+  ENDED
+}
+
+enum DayType {
+  SUNDAY
+  MONDAY
+  TUESDAY
+  WEDNESDAY
+  THURSDAY
+  FRIDAY
+  SATURDAY
+}
+
+enum ServiceDayType {
+  SUNDAY
+  MONDAY
+  TUESDAY
+  WEDNESDAY
+  THURSDAY
+  FRIDAY
+  SATURDAY
+}
+
+enum TripEventType {
+  TRIP_STARTED
+  LOCATION_UPDATED
+  ETA_UPDATED
+  TRIP_ENDED
+  STALE_ALERT
+  DRIVER_ASSIGNED
+  DRIVER_UNASSIGNED
+  SYSTEM_ALERT
+}
+
+enum TrackingSourceType {
+  DRIVER_MOBILE
+  GPS_DEVICE
+}
+
+enum TrackingSourceStatus {
+  HEALTHY
+  STALE
+  UNHEALTHY
+  DISCONNECTED
+}
+
+enum TrackingSelectionReason {
+  DRIVER_ONLY
+  GPS_ONLY
+  GPS_PRIORITY
+  DRIVER_PRIORITY
+  GPS_FALLBACK_TO_DRIVER
+  DRIVER_FALLBACK_TO_GPS
+  MOST_RECENT_HEALTHY
+  NO_HEALTHY_SOURCE
+}
+
+enum TripActivationMode {
+  MANUAL_DRIVER
+  AUTO_TELEMATICS
+  MANUAL_ADMIN
+}
+
+enum TraccarSyncStatus {
+  UNLINKED
+  LINKED
+  SYNCED
+  ERROR
+}
+
+model AppConfig {
+  id                               Int      @id @default(1)
+  passengerSelfRegistrationEnabled Boolean  @default(true)
+  createdAt                        DateTime @default(now())
+  updatedAt                        DateTime @updatedAt
+}
+
+model User {
+  id                 String                 @id @default(uuid())
+  fullName           String
+  email              String                 @unique
+  passwordHash       String
+  role               UserRole
+  isActive           Boolean                @default(true)
+  studentId          String?                @unique
+  phoneNumber        String?
+  approvalStatus     UserApprovalStatus     @default(APPROVED)
+  registrationSource UserRegistrationSource @default(ADMIN)
+  approvedAt         DateTime?
+  approvedByUserId   String?
+  rejectedAt         DateTime?
+  rejectedByUserId   String?
+  rejectionReason    String?
+  createdAt          DateTime               @default(now())
+  updatedAt          DateTime               @updatedAt
+
+  driverTrips              Trip[]                @relation("DriverTrips")
+  sessions                 Session[]
+  driverTripEvents         TripEvent[]           @relation("DriverTripEvents")
+  serviceSchedulesAsDriver ServiceSchedule[]     @relation("DriverServiceSchedules")
+  sourceTrackingStates     SourceTrackingState[] @relation("DriverSourceTrackingStates")
+
+  @@index([isActive])
+  @@index([role])
+  @@index([approvalStatus])
+  @@index([registrationSource])
+}
+
+model Session {
+  id     String @id @default(uuid())
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  revokedAt  DateTime?
+  createdAt  DateTime  @default(now())
+  lastSeenAt DateTime  @default(now())
+
+  refreshTokenHash String
+  refreshFamilyId  String
+
+  userAgentHash String
+  ipFirst       String
+  ipLast        String
+
+  roleSnapshot UserRole
+
+  deviceLabel   String?
+  userAgentRaw  String?
+  lastSeenIp    String?
+  revokedReason String?
+  isCurrent     Boolean @default(false)
+
+  @@index([userId])
+  @@index([revokedAt])
+  @@index([lastSeenAt])
+  @@index([refreshFamilyId])
+}
+
+model Bus {
+  id          String   @id @default(uuid())
+  busCode     String   @unique
+  plateNumber String?  @unique
+  capacity    Int?
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  trips            Trip[]
+  tripEvents       TripEvent[]
+  serviceSchedules ServiceSchedule[]
+  gpsAssignments   BusGpsDeviceAssignment[]
+  canonicalStates  CanonicalTrackingState[]
+  sourceStates     SourceTrackingState[]
+
+  @@index([isActive])
+}
+
+model GpsDevice {
+  id           String   @id @default(uuid())
+  deviceCode   String   @unique
+  serialNumber String?  @unique
+  displayName  String?
+  vendorName   String?
+  modelName    String?
+  imei         String?  @unique
+  apiKeyHash   String
+  isActive     Boolean  @default(true)
+  notes        String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  lastSeenAt     DateTime?
+  lastRecordedAt DateTime?
+  lastIp         String?
+  lastStatus     TrackingSourceStatus?
+  lastLat        Decimal?             @db.Decimal(10, 7)
+  lastLng        Decimal?             @db.Decimal(10, 7)
+  lastSpeedKmh   Decimal?             @db.Decimal(6, 2)
+  lastHeading    Int?
+  lastAccuracyM  Decimal?             @db.Decimal(8, 2)
+
+  traccarManaged       Boolean           @default(false)
+  traccarDeviceId      Int?              @unique
+  traccarUniqueId      String?           @unique
+  traccarServerBaseUrl String?
+  traccarSyncStatus    TraccarSyncStatus @default(UNLINKED)
+  traccarLastSyncAt    DateTime?
+  traccarLastError     String?
+
+  assignments      BusGpsDeviceAssignment[]
+  sourceStates     SourceTrackingState[]
+  ingestLogs       DeviceIngestLog[]
+  autoStartedTrips Trip[] @relation("TripStartedByGpsDevice")
+
+  @@index([isActive])
+  @@index([lastSeenAt])
+  @@index([lastStatus])
+  @@index([traccarManaged])
+  @@index([traccarSyncStatus])
+}
+
+model BusGpsDeviceAssignment {
+  id           String   @id @default(uuid())
+  busId        String
+  gpsDeviceId  String
+  assignedAt   DateTime @default(now())
+  unassignedAt DateTime?
+  isActive     Boolean  @default(true)
+  notes        String?
+
+  bus       Bus       @relation(fields: [busId], references: [id], onDelete: Cascade)
+  gpsDevice GpsDevice @relation(fields: [gpsDeviceId], references: [id], onDelete: Cascade)
+
+  @@index([busId])
+  @@index([gpsDeviceId])
+  @@index([isActive])
+  @@index([unassignedAt])
+}
+
+model Route {
+  id          String   @id @default(uuid())
+  routeName   String   @unique
+  description String?
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  routeStops       RouteStop[]
+  trips            Trip[]
+  schedules        Schedule[]
+  geometry         RouteGeometry?
+  tripEvents       TripEvent[]
+  serviceSchedules ServiceSchedule[]
+
+  @@index([isActive])
+}
+
+model Stop {
+  id        String   @id @default(uuid())
+  stopName  String
+  stopCode  String?  @unique
+  landmark  String?
+  address   String?
+  notes     String?
+  isActive  Boolean  @default(true)
+  lat       Decimal  @db.Decimal(10, 7)
+  lng       Decimal  @db.Decimal(10, 7)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  routeStops   RouteStop[]
+  schedules    Schedule[]
+  stopArrivals StopArrival[]
+
+  @@index([stopName])
+  @@index([stopCode])
+  @@index([isActive])
+}
+
+model RouteStop {
+  id                  String   @id @default(uuid())
+  routeId             String
+  stopId              String
+  stopOrder           Int
+  distanceFromStartKm Decimal? @db.Decimal(10, 3)
+
+  route Route @relation(fields: [routeId], references: [id], onDelete: Cascade)
+  stop  Stop  @relation(fields: [stopId], references: [id], onDelete: Cascade)
+
+  @@unique([routeId, stopOrder])
+  @@unique([routeId, stopId])
+  @@index([routeId])
+}
+
+model RouteGeometry {
+  id        String   @id @default(uuid())
+  routeId   String   @unique
+  polyline  Json
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  route Route @relation(fields: [routeId], references: [id], onDelete: Cascade)
+}
+
+model ServiceSchedule {
+  id            String         @id @default(uuid())
+  routeId       String
+  busId         String
+  driverId      String
+  dayType       ServiceDayType
+  departureTime DateTime       @db.Time(0)
+  isActive      Boolean        @default(true)
+  notes         String?
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+
+  route  Route @relation(fields: [routeId], references: [id], onDelete: Restrict)
+  bus    Bus   @relation(fields: [busId], references: [id], onDelete: Restrict)
+  driver User  @relation("DriverServiceSchedules", fields: [driverId], references: [id], onDelete: Restrict)
+  trips  Trip[]
+
+  @@index([routeId])
+  @@index([busId])
+  @@index([driverId])
+  @@index([dayType, departureTime])
+  @@index([isActive])
+}
+
+model Trip {
+  id                   String             @id @default(uuid())
+  busId                String
+  routeId              String
+  driverId             String
+  serviceScheduleId    String?
+  status               TripStatus         @default(PLANNED)
+  startTime            DateTime?
+  endTime              DateTime?
+  createdAt            DateTime           @default(now())
+  updatedAt            DateTime           @updatedAt
+  activationMode       TripActivationMode @default(MANUAL_DRIVER)
+  startedByGpsDeviceId String?
+
+  lastLatitude   Decimal? @db.Decimal(10, 7)
+  lastLongitude  Decimal? @db.Decimal(10, 7)
+  lastSpeedKmh   Decimal? @db.Decimal(6, 2)
+  lastHeading    Int?
+  lastAccuracyM  Decimal? @db.Decimal(8, 2)
+  lastLocationAt DateTime?
+  lastEtaMinutes Int?
+  nextStopName   String?
+  isStale        Boolean  @default(false)
+
+  lastTrackingSourceType       TrackingSourceType?
+  lastTrackingSourceStatus     TrackingSourceStatus?
+  lastTrackingSelectionReason  TrackingSelectionReason?
+  lastTrackingSourceLabel      String?
+  lastTrackingSourceRecordedAt DateTime?
+
+  bus                Bus              @relation(fields: [busId], references: [id], onDelete: Restrict)
+  route              Route            @relation(fields: [routeId], references: [id], onDelete: Restrict)
+  driver             User             @relation("DriverTrips", fields: [driverId], references: [id], onDelete: Restrict)
+  serviceSchedule    ServiceSchedule? @relation(fields: [serviceScheduleId], references: [id], onDelete: SetNull)
+  startedByGpsDevice GpsDevice?       @relation("TripStartedByGpsDevice", fields: [startedByGpsDeviceId], references: [id], onDelete: SetNull)
+
+  locationLogs    LocationLog[]
+  stopArrivals    StopArrival[]
+  events          TripEvent[]
+  canonicalStates CanonicalTrackingState[]
+  sourceStates    SourceTrackingState[]
+
+  @@index([busId])
+  @@index([routeId])
+  @@index([driverId])
+  @@index([serviceScheduleId])
+  @@index([status])
+  @@index([lastLocationAt])
+  @@index([isStale])
+  @@index([lastTrackingSourceType])
+  @@index([lastTrackingSourceStatus])
+  @@index([activationMode])
+  @@index([startedByGpsDeviceId])
+}
+
+model CanonicalTrackingState {
+  id                   String                  @id @default(uuid())
+  busId                String
+  tripId               String?
+  selectedSourceType   TrackingSourceType
+  selectedSourceStatus TrackingSourceStatus
+  selectionReason      TrackingSelectionReason
+  selectedSourceLabel  String?
+
+  latitude            Decimal? @db.Decimal(10, 7)
+  longitude           Decimal? @db.Decimal(10, 7)
+  speedKmh            Decimal? @db.Decimal(6, 2)
+  rawSpeedKmh         Decimal? @db.Decimal(6, 2)
+  averageSpeedKmh     Decimal? @db.Decimal(6, 2)
+  displaySpeedKmh     Decimal? @db.Decimal(6, 2)
+  heading             Int?
+  accuracyM           Decimal? @db.Decimal(8, 2)
+  recordedAt          DateTime?
+  isStationary        Boolean  @default(false)
+  isStale             Boolean  @default(false)
+  distanceDeltaMeters Decimal? @db.Decimal(10, 2)
+  elapsedSeconds      Decimal? @db.Decimal(10, 2)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  bus  Bus   @relation(fields: [busId], references: [id], onDelete: Cascade)
+  trip Trip? @relation(fields: [tripId], references: [id], onDelete: SetNull)
+
+  @@unique([busId])
+  @@index([tripId])
+  @@index([selectedSourceType])
+  @@index([selectedSourceStatus])
+  @@index([recordedAt])
+}
+
+model SourceTrackingState {
+  id           String               @id @default(uuid())
+  busId        String
+  tripId       String?
+  sourceType   TrackingSourceType
+  sourceStatus TrackingSourceStatus
+  sourceLabel  String?
+
+  driverId    String?
+  gpsDeviceId String?
+
+  latitude        Decimal? @db.Decimal(10, 7)
+  longitude       Decimal? @db.Decimal(10, 7)
+  speedKmh        Decimal? @db.Decimal(6, 2)
+  rawSpeedKmh     Decimal? @db.Decimal(6, 2)
+  averageSpeedKmh Decimal? @db.Decimal(6, 2)
+  displaySpeedKmh Decimal? @db.Decimal(6, 2)
+  heading         Int?
+  accuracyM       Decimal? @db.Decimal(8, 2)
+  recordedAt      DateTime?
+  lastSeenAt      DateTime?
+  healthScore     Int      @default(0)
+  isSelected      Boolean  @default(false)
+  priorityRank    Int      @default(100)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  bus       Bus        @relation(fields: [busId], references: [id], onDelete: Cascade)
+  trip      Trip?      @relation(fields: [tripId], references: [id], onDelete: SetNull)
+  driver    User?      @relation("DriverSourceTrackingStates", fields: [driverId], references: [id], onDelete: SetNull)
+  gpsDevice GpsDevice? @relation(fields: [gpsDeviceId], references: [id], onDelete: SetNull)
+
+  @@unique([busId, sourceType])
+  @@index([tripId])
+  @@index([sourceType])
+  @@index([sourceStatus])
+  @@index([gpsDeviceId])
+  @@index([driverId])
+  @@index([isSelected])
+  @@index([lastSeenAt])
+}
+
+model DeviceIngestLog {
+  id           String                @id @default(uuid())
+  gpsDeviceId  String
+  lat          Decimal?              @db.Decimal(10, 7)
+  lng          Decimal?              @db.Decimal(10, 7)
+  speedKmh     Decimal?              @db.Decimal(6, 2)
+  heading      Int?
+  accuracyM    Decimal?              @db.Decimal(8, 2)
+  recordedAt   DateTime?
+  receivedAt   DateTime              @default(now())
+  requestIp    String?
+  isAccepted   Boolean               @default(false)
+  sourceStatus TrackingSourceStatus?
+  rawPayload   Json?
+  notes        String?
+
+  gpsDevice GpsDevice @relation(fields: [gpsDeviceId], references: [id], onDelete: Cascade)
+
+  @@index([gpsDeviceId])
+  @@index([recordedAt])
+  @@index([receivedAt])
+  @@index([isAccepted])
+}
+
+model LocationLog {
+  id         String   @id @default(uuid())
+  tripId     String
+  lat        Decimal  @db.Decimal(10, 7)
+  lng        Decimal  @db.Decimal(10, 7)
+  speedKmh   Decimal? @db.Decimal(6, 2)
+  heading    Int?
+  accuracyM  Decimal? @db.Decimal(8, 2)
+  recordedAt DateTime
+  createdAt  DateTime @default(now())
+
+  trip Trip @relation(fields: [tripId], references: [id], onDelete: Cascade)
+
+  @@index([tripId])
+  @@index([recordedAt])
+}
+
+model Schedule {
+  id            String   @id @default(uuid())
+  routeId       String
+  stopId        String
+  dayType       DayType
+  scheduledTime DateTime @db.Time(0)
+
+  route Route @relation(fields: [routeId], references: [id], onDelete: Cascade)
+  stop  Stop  @relation(fields: [stopId], references: [id], onDelete: Cascade)
+
+  @@unique([routeId, stopId, dayType, scheduledTime])
+  @@index([routeId])
+  @@index([stopId])
+}
+
+model StopArrival {
+  id                String    @id @default(uuid())
+  tripId            String
+  stopId            String
+  scheduledTime     DateTime? @db.Time(0)
+  actualArrivalTime DateTime
+  delayMinutes      Int
+
+  trip Trip @relation(fields: [tripId], references: [id], onDelete: Cascade)
+  stop Stop @relation(fields: [stopId], references: [id], onDelete: Cascade)
+
+  @@unique([tripId, stopId])
+  @@index([tripId])
+  @@index([stopId])
+  @@index([actualArrivalTime])
+}
+
+model TripEvent {
+  id          String        @id @default(uuid())
+  tripId      String
+  routeId     String?
+  busId       String?
+  driverId    String?
+  type        TripEventType
+  title       String
+  description String
+  payload     Json?
+  createdAt   DateTime      @default(now())
+
+  trip   Trip   @relation(fields: [tripId], references: [id], onDelete: Cascade)
+  route  Route? @relation(fields: [routeId], references: [id], onDelete: SetNull)
+  bus    Bus?   @relation(fields: [busId], references: [id], onDelete: SetNull)
+  driver User?  @relation("DriverTripEvents", fields: [driverId], references: [id], onDelete: SetNull)
+
+  @@index([tripId, createdAt])
+  @@index([createdAt])
+  @@index([type, createdAt])
+  @@index([routeId])
+  @@index([driverId])
+  @@index([busId])
+}
+
+model AuditLog {
+  id          String   @id @default(uuid())
+  actorUserId String?
+  actorRole   UserRole?
+  action      String
+  entityType  String
+  entityId    String?
+  route       String?
+  method      String?
+  requestId   String?
+  ip          String?
+  userAgent   String?
+  beforeJson  Json?
+  afterJson   Json?
+  metaJson    Json?
+  createdAt   DateTime @default(now())
+
+  @@index([actorUserId])
+  @@index([action])
+  @@index([entityType])
+  @@index([entityId])
+  @@index([createdAt])
+  @@index([requestId])
+}
