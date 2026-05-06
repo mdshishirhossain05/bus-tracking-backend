@@ -11,7 +11,10 @@ import {
 } from "../services/googleRoutes.service.js";
 
 function toNumber(value: unknown) {
-  return Number(value);
+  if (value == null) return null;
+
+  const numeric = Number(value);
+  return Number.isFinite(numeric) ? numeric : null;
 }
 
 function durationSecondsToMinutes(value: number | null) {
@@ -19,22 +22,12 @@ function durationSecondsToMinutes(value: number | null) {
   return Number((value / 60).toFixed(1));
 }
 
-function getGeometrySource(routeGeometry: unknown[]) {
-  return routeGeometry.length >= 2 ? "SAVED_GEOMETRY" : "UNKNOWN";
-}
-
 function getTotalDistanceKmFromStops(
   stops: Array<{ distanceFromStartKm: unknown }>,
 ) {
   const distances = stops
-    .map((item) =>
-      item.distanceFromStartKm == null
-        ? null
-        : toNumber(item.distanceFromStartKm),
-    )
-    .filter(
-      (value): value is number => value != null && Number.isFinite(value),
-    );
+    .map((item) => toNumber(item.distanceFromStartKm))
+    .filter((value): value is number => value != null);
 
   if (!distances.length) return null;
 
@@ -45,6 +38,14 @@ function mapRoutingModeToSource(metrics: RouteMetrics) {
   if (metrics.routingMode === "google_routes") return "GOOGLE_ROUTES";
   if (metrics.routingMode === "fallback") return "STRAIGHT_LINE";
   return "UNKNOWN";
+}
+
+function normalizeGeometrySource(value: unknown, geometry: unknown[]) {
+  if (typeof value === "string" && value.trim().length > 0) {
+    return value;
+  }
+
+  return geometry.length >= 2 ? "SAVED_GEOMETRY" : "UNKNOWN";
 }
 
 function mapRouteStopsResponse(route: {
@@ -67,10 +68,7 @@ function mapRouteStopsResponse(route: {
     id: item.id,
     stopId: item.stopId,
     stopOrder: item.stopOrder,
-    distanceFromStartKm:
-      item.distanceFromStartKm == null
-        ? null
-        : toNumber(item.distanceFromStartKm),
+    distanceFromStartKm: toNumber(item.distanceFromStartKm),
     stop: {
       id: item.stop.id,
       stopName: item.stop.stopName,
@@ -78,6 +76,41 @@ function mapRouteStopsResponse(route: {
       lng: toNumber(item.stop.lng),
     },
   }));
+}
+
+function getRouteGeometryPayload(route: {
+  geometry: {
+    polyline: unknown;
+    distanceKm?: unknown;
+    durationSeconds?: number | null;
+    source?: string | null;
+  } | null;
+  routeStops: Array<{ distanceFromStartKm: unknown }>;
+}) {
+  const geometry = Array.isArray(route.geometry?.polyline)
+    ? (route.geometry?.polyline as unknown[])
+    : [];
+
+  const distanceKm =
+    toNumber(route.geometry?.distanceKm) ??
+    getTotalDistanceKmFromStops(route.routeStops);
+
+  const durationSeconds =
+    typeof route.geometry?.durationSeconds === "number"
+      ? route.geometry.durationSeconds
+      : null;
+
+  const source = normalizeGeometrySource(route.geometry?.source, geometry);
+
+  return {
+    geometry,
+    summary: {
+      distanceKm,
+      durationMinutes: durationSecondsToMinutes(durationSeconds),
+      durationSeconds,
+      source,
+    },
+  };
 }
 
 export async function getRouteWithStops(req: Request, res: Response) {
@@ -103,23 +136,24 @@ export async function getRouteWithStops(req: Request, res: Response) {
     return res.status(404).json({ message: "Route not found." });
   }
 
-  const geometry = Array.isArray(route.geometry?.polyline)
-    ? (route.geometry.polyline as unknown[])
-    : [];
+  const geometryPayload = getRouteGeometryPayload(route);
 
   return res.json({
     message: "Route stops loaded successfully.",
     route: {
       id: route.id,
       routeName: route.routeName,
+      geometry: {
+        polyline: geometryPayload.geometry,
+        distanceKm: geometryPayload.summary.distanceKm,
+        durationMinutes: geometryPayload.summary.durationMinutes,
+        durationSeconds: geometryPayload.summary.durationSeconds,
+        source: geometryPayload.summary.source,
+      },
     },
     stops: mapRouteStopsResponse(route),
-    geometry,
-    summary: {
-      distanceKm: getTotalDistanceKmFromStops(route.routeStops),
-      durationMinutes: null,
-      source: getGeometrySource(geometry),
-    },
+    geometry: geometryPayload.geometry,
+    summary: geometryPayload.summary,
   });
 }
 
@@ -207,8 +241,8 @@ export async function setRouteStops(req: Request, res: Response) {
         stopId: item.stopId,
         stopOrder: index + 1,
         stopName: stop.stopName,
-        lat: toNumber(stop.lat),
-        lng: toNumber(stop.lng),
+        lat: Number(stop.lat),
+        lng: Number(stop.lng),
       };
     });
 
@@ -220,6 +254,9 @@ export async function setRouteStops(req: Request, res: Response) {
       }),
     ),
   );
+
+  const source = mapRoutingModeToSource(metrics);
+  const totalDistanceKm = metrics.distancesKm.at(-1) ?? null;
 
   const beforeJson = route.routeStops.map((rs) => ({
     stopId: rs.stopId,
@@ -247,10 +284,16 @@ export async function setRouteStops(req: Request, res: Response) {
         where: { routeId },
         update: {
           polyline: metrics.geometry,
+          distanceKm: totalDistanceKm,
+          durationSeconds: metrics.durationSeconds,
+          source,
         },
         create: {
           routeId,
           polyline: metrics.geometry,
+          distanceKm: totalDistanceKm,
+          durationSeconds: metrics.durationSeconds,
+          source,
         },
       });
     } else {
@@ -287,7 +330,8 @@ export async function setRouteStops(req: Request, res: Response) {
       routingMode: metrics.routingMode,
       geometryPointCount: metrics.geometry.length,
       durationSeconds: metrics.durationSeconds,
-      distanceKm: metrics.distancesKm.at(-1) ?? null,
+      distanceKm: totalDistanceKm,
+      source,
     },
   });
 
@@ -306,9 +350,7 @@ export async function setRouteStops(req: Request, res: Response) {
     return res.status(404).json({ message: "Route not found after save." });
   }
 
-  const savedGeometry = Array.isArray(savedRoute.geometry?.polyline)
-    ? (savedRoute.geometry.polyline as unknown[])
-    : [];
+  const geometryPayload = getRouteGeometryPayload(savedRoute);
 
   return res.json({
     message:
@@ -322,16 +364,19 @@ export async function setRouteStops(req: Request, res: Response) {
     geometryPointCount: metrics.geometry.length,
     distancesKm: metrics.distancesKm,
     durationSeconds: metrics.durationSeconds,
-    summary: {
-      distanceKm: metrics.distancesKm.at(-1) ?? null,
-      durationMinutes: durationSecondsToMinutes(metrics.durationSeconds),
-      source: mapRoutingModeToSource(metrics),
-    },
+    summary: geometryPayload.summary,
     route: {
       id: savedRoute.id,
       routeName: savedRoute.routeName,
+      geometry: {
+        polyline: geometryPayload.geometry,
+        distanceKm: geometryPayload.summary.distanceKm,
+        durationMinutes: geometryPayload.summary.durationMinutes,
+        durationSeconds: geometryPayload.summary.durationSeconds,
+        source: geometryPayload.summary.source,
+      },
     },
     stops: mapRouteStopsResponse(savedRoute),
-    geometry: savedGeometry,
+    geometry: geometryPayload.geometry,
   });
 }

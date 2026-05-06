@@ -301,11 +301,14 @@ model RouteStop {
 }
 
 model RouteGeometry {
-  id        String   @id @default(uuid())
-  routeId   String   @unique
-  polyline  Json
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  id              String   @id @default(uuid())
+  routeId         String   @unique
+  polyline        Json
+  distanceKm      Decimal? @db.Decimal(10, 3)
+  durationSeconds Int?
+  source          String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
 
   route Route @relation(fields: [routeId], references: [id], onDelete: Cascade)
 }
