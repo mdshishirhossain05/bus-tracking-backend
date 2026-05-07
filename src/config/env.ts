@@ -214,7 +214,11 @@ const envSchema = z.object({
 
   SMTP_HOST: z.string().optional().default(""),
   SMTP_PORT: z.coerce.number().int().positive().default(587),
-  SMTP_SECURE: z.coerce.boolean().default(false),
+  SMTP_SECURE: z
+    .string()
+    .optional()
+    .default("false")
+    .transform((value) => value.trim().toLowerCase() === "true"),
   SMTP_USER: z.string().optional().default(""),
   SMTP_PASS: z.string().optional().default(""),
   SMTP_FROM: z.string().optional().default(""),
