@@ -212,6 +212,29 @@ const envSchema = z.object({
   GOOGLE_MAPS_SERVER_API_KEY: z.string().optional().default(""),
   GOOGLE_ROUTES_TIMEOUT_MS: z.coerce.number().int().positive().default(8000),
 
+  SMTP_HOST: z.string().optional().default(""),
+  SMTP_PORT: z.coerce.number().int().positive().default(587),
+  SMTP_SECURE: z.coerce.boolean().default(false),
+  SMTP_USER: z.string().optional().default(""),
+  SMTP_PASS: z.string().optional().default(""),
+  SMTP_FROM: z.string().optional().default(""),
+
+  PASSENGER_REGISTRATION_OTP_TTL_MINUTES: z.coerce
+    .number()
+    .int()
+    .positive()
+    .default(10),
+  PASSENGER_REGISTRATION_OTP_RESEND_COOLDOWN_SECONDS: z.coerce
+    .number()
+    .int()
+    .positive()
+    .default(60),
+  PASSENGER_REGISTRATION_OTP_MAX_ATTEMPTS: z.coerce
+    .number()
+    .int()
+    .positive()
+    .default(5),
+
   BOOTSTRAP_ADMIN_NAME: z.string().optional(),
   BOOTSTRAP_ADMIN_EMAIL: z.string().email().optional(),
   BOOTSTRAP_ADMIN_PASSWORD: z.string().min(8).optional(),

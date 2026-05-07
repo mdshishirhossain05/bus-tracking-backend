@@ -1,10 +1,19 @@
+import {
+  createHash,
+  randomBytes,
+  randomInt,
+  timingSafeEqual,
+} from "node:crypto";
 import type { Request, Response } from "express";
 import { prisma } from "../config/prisma.js";
+import { env } from "../config/env.js";
 import {
   registerPassengerSchema,
   loginSchema,
   updateMeSchema,
   changePasswordSchema,
+  requestPassengerRegistrationOtpSchema,
+  verifyPassengerRegistrationOtpSchema,
 } from "../validators/auth.validators.js";
 import { hashPassword, comparePassword } from "../utils/password.js";
 import { setAuthCookies, clearAuthCookies } from "../utils/cookies.js";
@@ -22,6 +31,9 @@ import {
 import { writeAuditLogSafe, getRequestIp } from "../services/audit.service.js";
 import { sendSuccess } from "../utils/apiResponse.js";
 import { AppError } from "../utils/appError.js";
+import { sendPassengerRegistrationOtpEmail } from "../services/email.service.js";
+
+const PASSENGER_REGISTRATION_OTP_PURPOSE = "PASSENGER_REGISTRATION";
 
 async function readRegistrationSettings() {
   return prisma.appConfig.upsert({
@@ -38,6 +50,29 @@ async function readRegistrationSettings() {
   });
 }
 
+function hashSecret(value: string) {
+  return createHash("sha256")
+    .update(`${value}:${env.JWT_ACCESS_SECRET}`, "utf8")
+    .digest("hex");
+}
+
+function generateOtp() {
+  return String(randomInt(100000, 1000000));
+}
+
+function generateVerificationToken() {
+  return randomBytes(32).toString("hex");
+}
+
+function safeHashCompare(leftHash: string, rightHash: string) {
+  const left = Buffer.from(leftHash, "hex");
+  const right = Buffer.from(rightHash, "hex");
+
+  if (left.length !== right.length) return false;
+
+  return timingSafeEqual(left, right);
+}
+
 export async function getPublicRegistrationSettings(
   _req: Request,
   res: Response,
@@ -47,6 +82,233 @@ export async function getPublicRegistrationSettings(
   return sendSuccess(res, {
     message: "Registration settings fetched successfully",
     data: config,
+  });
+}
+
+export async function requestPassengerRegistrationOtp(
+  req: Request,
+  res: Response,
+) {
+  const config = await readRegistrationSettings();
+
+  if (!config.passengerSelfRegistrationEnabled) {
+    throw new AppError({
+      statusCode: 403,
+      code: "PASSENGER_SELF_REGISTRATION_DISABLED",
+      message: "Passenger self-registration is currently disabled",
+    });
+  }
+
+  const parsed = requestPassengerRegistrationOtpSchema.safeParse(req.body);
+
+  if (!parsed.success) {
+    throw new AppError({
+      statusCode: 400,
+      code: "VALIDATION_ERROR",
+      message: "Invalid email address",
+      details: parsed.error.format(),
+    });
+  }
+
+  const email = parsed.data.email;
+
+  const existingEmail = await prisma.user.findUnique({
+    where: { email },
+    select: { id: true },
+  });
+
+  if (existingEmail) {
+    throw new AppError({
+      statusCode: 409,
+      code: "EMAIL_ALREADY_EXISTS",
+      message: "Email already exists",
+    });
+  }
+
+  const now = new Date();
+
+  const latestOtp = await prisma.emailVerificationOtp.findFirst({
+    where: {
+      email,
+      purpose: PASSENGER_REGISTRATION_OTP_PURPOSE,
+      consumedAt: null,
+    },
+    orderBy: { requestedAt: "desc" },
+    select: {
+      requestedAt: true,
+    },
+  });
+
+  if (latestOtp) {
+    const elapsedSeconds = Math.floor(
+      (now.getTime() - latestOtp.requestedAt.getTime()) / 1000,
+    );
+
+    const remainingSeconds =
+      env.PASSENGER_REGISTRATION_OTP_RESEND_COOLDOWN_SECONDS - elapsedSeconds;
+
+    if (remainingSeconds > 0) {
+      throw new AppError({
+        statusCode: 429,
+        code: "OTP_RESEND_COOLDOWN",
+        message: `Please wait ${remainingSeconds} seconds before requesting another OTP.`,
+      });
+    }
+  }
+
+  const otp = generateOtp();
+  const expiresAt = new Date(
+    now.getTime() + env.PASSENGER_REGISTRATION_OTP_TTL_MINUTES * 60 * 1000,
+  );
+
+  await prisma.emailVerificationOtp.create({
+    data: {
+      email,
+      purpose: PASSENGER_REGISTRATION_OTP_PURPOSE,
+      otpHash: hashSecret(otp),
+      maxAttempts: env.PASSENGER_REGISTRATION_OTP_MAX_ATTEMPTS,
+      expiresAt,
+      requestedAt: now,
+    },
+  });
+
+  await sendPassengerRegistrationOtpEmail({
+    to: email,
+    otp,
+    expiresInMinutes: env.PASSENGER_REGISTRATION_OTP_TTL_MINUTES,
+  });
+
+  await writeAuditLogSafe({
+    actorUserId: null,
+    actorRole: null,
+    action: "PASSENGER_REGISTRATION_OTP_REQUESTED",
+    entityType: "EmailVerificationOtp",
+    entityId: null,
+    route: req.originalUrl,
+    method: req.method,
+    requestId: req.requestId ?? null,
+    ip: getRequestIp(req),
+    userAgent: req.headers["user-agent"]?.toString() ?? null,
+    metaJson: {
+      email,
+      expiresAt: expiresAt.toISOString(),
+    },
+  });
+
+  return sendSuccess(res, {
+    message: "Verification code sent successfully.",
+    data: {
+      email,
+      expiresAt,
+      resendAfterSeconds:
+        env.PASSENGER_REGISTRATION_OTP_RESEND_COOLDOWN_SECONDS,
+    },
+  });
+}
+
+export async function verifyPassengerRegistrationOtp(
+  req: Request,
+  res: Response,
+) {
+  const parsed = verifyPassengerRegistrationOtpSchema.safeParse(req.body);
+
+  if (!parsed.success) {
+    throw new AppError({
+      statusCode: 400,
+      code: "VALIDATION_ERROR",
+      message: "Invalid OTP data",
+      details: parsed.error.format(),
+    });
+  }
+
+  const { email, otp } = parsed.data;
+  const now = new Date();
+
+  const record = await prisma.emailVerificationOtp.findFirst({
+    where: {
+      email,
+      purpose: PASSENGER_REGISTRATION_OTP_PURPOSE,
+      consumedAt: null,
+      expiresAt: { gt: now },
+    },
+    orderBy: { requestedAt: "desc" },
+  });
+
+  if (!record) {
+    throw new AppError({
+      statusCode: 400,
+      code: "OTP_NOT_FOUND_OR_EXPIRED",
+      message: "Verification code is invalid or expired.",
+    });
+  }
+
+  if (record.attempts >= record.maxAttempts) {
+    throw new AppError({
+      statusCode: 429,
+      code: "OTP_MAX_ATTEMPTS_EXCEEDED",
+      message: "Too many incorrect OTP attempts. Please request a new code.",
+    });
+  }
+
+  const incomingHash = hashSecret(otp);
+  const isValidOtp = safeHashCompare(incomingHash, record.otpHash);
+
+  if (!isValidOtp) {
+    const updated = await prisma.emailVerificationOtp.update({
+      where: { id: record.id },
+      data: {
+        attempts: { increment: 1 },
+      },
+      select: {
+        attempts: true,
+        maxAttempts: true,
+      },
+    });
+
+    const remainingAttempts = Math.max(
+      0,
+      updated.maxAttempts - updated.attempts,
+    );
+
+    throw new AppError({
+      statusCode: 400,
+      code: "INVALID_OTP",
+      message: `Invalid verification code. ${remainingAttempts} attempt(s) remaining.`,
+    });
+  }
+
+  const verificationToken = generateVerificationToken();
+
+  await prisma.emailVerificationOtp.update({
+    where: { id: record.id },
+    data: {
+      verifiedAt: now,
+      verificationTokenHash: hashSecret(verificationToken),
+    },
+  });
+
+  await writeAuditLogSafe({
+    actorUserId: null,
+    actorRole: null,
+    action: "PASSENGER_REGISTRATION_EMAIL_VERIFIED",
+    entityType: "EmailVerificationOtp",
+    entityId: record.id,
+    route: req.originalUrl,
+    method: req.method,
+    requestId: req.requestId ?? null,
+    ip: getRequestIp(req),
+    userAgent: req.headers["user-agent"]?.toString() ?? null,
+    metaJson: {
+      email,
+    },
+  });
+
+  return sendSuccess(res, {
+    message: "Email verified successfully.",
+    data: {
+      email,
+      emailVerificationToken: verificationToken,
+    },
   });
 }
 
@@ -62,6 +324,7 @@ export async function registerPassenger(req: Request, res: Response) {
   }
 
   const parsed = registerPassengerSchema.safeParse(req.body);
+
   if (!parsed.success) {
     req.log?.warn(
       { errors: parsed.error.format() },
@@ -76,11 +339,20 @@ export async function registerPassenger(req: Request, res: Response) {
     });
   }
 
-  const { fullName, email, password, studentId, phoneNumber } = parsed.data;
+  const {
+    fullName,
+    email,
+    password,
+    studentId,
+    phoneNumber,
+    emailVerificationToken,
+  } = parsed.data;
 
   try {
+    const normalizedEmail = email.toLowerCase();
+
     const existingEmail = await prisma.user.findUnique({
-      where: { email: email.toLowerCase() },
+      where: { email: normalizedEmail },
       select: { id: true },
     });
 
@@ -105,37 +377,71 @@ export async function registerPassenger(req: Request, res: Response) {
       });
     }
 
-    const passwordHash = await hashPassword(password);
-
-    const user = await prisma.user.create({
-      data: {
-        fullName,
-        email: email.toLowerCase(),
-        passwordHash,
-        role: "PASSENGER",
-        studentId,
-        phoneNumber: phoneNumber ?? null,
-        isActive: false,
-        approvalStatus: "PENDING_APPROVAL",
-        registrationSource: "SELF",
-        approvedAt: null,
-        approvedByUserId: null,
-        rejectedAt: null,
-        rejectedByUserId: null,
-        rejectionReason: null,
+    const verification = await prisma.emailVerificationOtp.findFirst({
+      where: {
+        email: normalizedEmail,
+        purpose: PASSENGER_REGISTRATION_OTP_PURPOSE,
+        verificationTokenHash: hashSecret(emailVerificationToken),
+        verifiedAt: { not: null },
+        consumedAt: null,
+        expiresAt: { gt: new Date() },
       },
+      orderBy: { verifiedAt: "desc" },
       select: {
         id: true,
-        fullName: true,
-        email: true,
-        role: true,
-        studentId: true,
-        phoneNumber: true,
-        approvalStatus: true,
-        registrationSource: true,
-        isActive: true,
-        createdAt: true,
       },
+    });
+
+    if (!verification) {
+      throw new AppError({
+        statusCode: 400,
+        code: "EMAIL_NOT_VERIFIED",
+        message: "Please verify your email with OTP before registration.",
+      });
+    }
+
+    const passwordHash = await hashPassword(password);
+
+    const user = await prisma.$transaction(async (tx) => {
+      const createdUser = await tx.user.create({
+        data: {
+          fullName,
+          email: normalizedEmail,
+          passwordHash,
+          role: "PASSENGER",
+          studentId,
+          phoneNumber: phoneNumber ?? null,
+          isActive: false,
+          approvalStatus: "PENDING_APPROVAL",
+          registrationSource: "SELF",
+          approvedAt: null,
+          approvedByUserId: null,
+          rejectedAt: null,
+          rejectedByUserId: null,
+          rejectionReason: null,
+        },
+        select: {
+          id: true,
+          fullName: true,
+          email: true,
+          role: true,
+          studentId: true,
+          phoneNumber: true,
+          approvalStatus: true,
+          registrationSource: true,
+          isActive: true,
+          createdAt: true,
+        },
+      });
+
+      await tx.emailVerificationOtp.update({
+        where: { id: verification.id },
+        data: {
+          consumedAt: new Date(),
+        },
+      });
+
+      return createdUser;
     });
 
     await writeAuditLogSafe({
@@ -180,6 +486,7 @@ export async function registerPassenger(req: Request, res: Response) {
 
 export async function login(req: Request, res: Response) {
   const parsed = loginSchema.safeParse(req.body);
+
   if (!parsed.success) {
     throw new AppError({
       statusCode: 400,
@@ -190,6 +497,7 @@ export async function login(req: Request, res: Response) {
   }
 
   const { email, password } = parsed.data;
+
   const user = await prisma.user.findUnique({
     where: { email: email.toLowerCase() },
   });
@@ -229,6 +537,7 @@ export async function login(req: Request, res: Response) {
   }
 
   const ok = await comparePassword(password, user.passwordHash);
+
   if (!ok) {
     throw new AppError({
       statusCode: 401,
@@ -282,6 +591,7 @@ export async function login(req: Request, res: Response) {
 
 export async function refresh(req: Request, res: Response) {
   const token = (req as any).cookies?.refresh_token;
+
   if (!token) {
     throw new AppError({
       statusCode: 401,
@@ -292,6 +602,7 @@ export async function refresh(req: Request, res: Response) {
 
   try {
     const tokens = await rotateRefreshToken({ req, refreshToken: token });
+
     setAuthCookies(res, tokens.accessToken, tokens.refreshToken);
 
     return sendSuccess(res, {
@@ -318,6 +629,7 @@ export async function refresh(req: Request, res: Response) {
 
 export async function me(req: AuthRequest, res: Response) {
   const userId = req.user?.id;
+
   if (!userId) {
     throw new AppError({
       statusCode: 401,
@@ -350,6 +662,7 @@ export async function me(req: AuthRequest, res: Response) {
 
 export async function updateMe(req: AuthRequest, res: Response) {
   const userId = req.user?.id;
+
   if (!userId) {
     throw new AppError({
       statusCode: 401,
@@ -359,6 +672,7 @@ export async function updateMe(req: AuthRequest, res: Response) {
   }
 
   const parsed = updateMeSchema.safeParse(req.body);
+
   if (!parsed.success) {
     throw new AppError({
       statusCode: 400,
@@ -426,6 +740,7 @@ export async function changePassword(req: AuthRequest, res: Response) {
   }
 
   const parsed = changePasswordSchema.safeParse(req.body);
+
   if (!parsed.success) {
     throw new AppError({
       statusCode: 400,
@@ -450,6 +765,7 @@ export async function changePassword(req: AuthRequest, res: Response) {
   }
 
   const valid = await comparePassword(currentPassword, user.passwordHash);
+
   if (!valid) {
     throw new AppError({
       statusCode: 400,
@@ -513,6 +829,7 @@ export async function listSessions(req: AuthRequest, res: Response) {
 
 export async function logout(req: AuthRequest, res: Response) {
   const sessionId = req.user?.sessionId;
+
   if (sessionId) {
     await revokeSession(sessionId, "LOGOUT");
   }
@@ -526,6 +843,7 @@ export async function logout(req: AuthRequest, res: Response) {
 
 export async function logoutAll(req: AuthRequest, res: Response) {
   const userId = req.user?.id;
+
   if (!userId) {
     throw new AppError({
       statusCode: 401,
@@ -583,6 +901,7 @@ export async function revokeOneSession(req: AuthRequest, res: Response) {
   }
 
   const targetSessionId = sessionId.trim();
+
   const revoked = await revokeUserSession(
     userId,
     targetSessionId,

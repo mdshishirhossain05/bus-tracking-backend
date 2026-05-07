@@ -12,6 +12,8 @@ import {
   logoutOthers,
   revokeOneSession,
   getPublicRegistrationSettings,
+  requestPassengerRegistrationOtp,
+  verifyPassengerRegistrationOtp,
 } from "../controllers/auth.controller.js";
 import { requireAuth } from "../middlewares/auth.middleware.js";
 import { noStoreResponse } from "../middlewares/cache.middleware.js";
@@ -29,9 +31,22 @@ authRouter.get(
   asyncHandler(getPublicRegistrationSettings),
 );
 
+authRouter.post(
+  "/auth/register/request-otp",
+  asyncHandler(requestPassengerRegistrationOtp),
+);
+
+authRouter.post(
+  "/auth/register/verify-otp",
+  asyncHandler(verifyPassengerRegistrationOtp),
+);
+
 authRouter.post("/auth/register", asyncHandler(registerPassenger));
+
 authRouter.post("/auth/login", loginLimiter, asyncHandler(login));
+
 authRouter.get("/auth/me", asyncHandler(requireAuth), asyncHandler(me));
+
 authRouter.patch("/auth/me", asyncHandler(requireAuth), asyncHandler(updateMe));
 
 authRouter.post(
