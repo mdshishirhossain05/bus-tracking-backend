@@ -58,6 +58,11 @@ function buildLiveSourceLabel(filteredState: {
   );
 }
 
+function roundNumber(value: number, digits = 1) {
+  const factor = 10 ** digits;
+  return Math.round(value * factor) / factor;
+}
+
 function pickCurrentSpeedKmh(state: {
   sourceType: "DRIVER_MOBILE" | "GPS_DEVICE";
   rawSpeedKmh: number | null;
@@ -129,11 +134,6 @@ function pickEtaSpeedKmh(state: {
   }
 
   return roundNumber(display * 0.5 + average * 0.35 + current * 0.15, 1);
-}
-
-function roundNumber(value: number, digits = 1) {
-  const factor = 10 ** digits;
-  return Math.round(value * factor) / factor;
 }
 
 export async function getCurrentTrip(req: AuthRequest, res: Response) {
@@ -385,6 +385,7 @@ export async function sendLocation(req: AuthRequest, res: Response) {
     key,
     Number(env.LOCATION_MIN_INTERVAL_MS ?? 2000),
   );
+
   if (!rate.allowed) {
     req.log?.warn({ tripId, driverId }, "location update rate limited");
     throw new AppError({
@@ -400,11 +401,13 @@ export async function sendLocation(req: AuthRequest, res: Response) {
     : new Date();
 
   const monotonic = isMonotonic(key, recordedAt);
+
   if (!monotonic.allowed) {
     req.log?.warn(
       { tripId, driverId, recordedAt: recordedAt.toISOString() },
       "stale gps point rejected",
     );
+
     throw new AppError({
       statusCode: 400,
       code: monotonic.reason ?? "STALE_TIMESTAMP",
@@ -561,6 +564,9 @@ export async function sendLocation(req: AuthRequest, res: Response) {
     distanceDeltaMeters: selectedState.distanceDeltaMeters,
     elapsedSeconds: selectedState.elapsedSeconds,
     source: buildLiveSourceLabel(selectedState),
+    sourceType: selectedState.sourceType,
+    sourceStatus: selectedState.sourceStatus,
+    selectionReason: selectedState.selectionReason,
     recordedAt: selectedState.recordedAt,
   });
 
@@ -722,6 +728,7 @@ export async function endTrip(req: AuthRequest, res: Response) {
       message: "Invalid tripId",
     });
   }
+
   const tripId = tripIdParsed.data;
 
   req.log?.info({ tripId, driverId }, "endTrip requested");
@@ -783,6 +790,7 @@ export async function endTrip(req: AuthRequest, res: Response) {
 
   try {
     const trip = await prisma.trip.findUnique({ where: { id: tripId } });
+
     if (!trip) {
       await failIdempotentRequest(idempotencyKey);
       req.log?.warn({ tripId, driverId }, "trip not found for endTrip");

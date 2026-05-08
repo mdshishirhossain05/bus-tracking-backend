@@ -27,6 +27,20 @@ export type TripLocationRealtimePayload = {
   distanceDeltaMeters?: number | null;
   elapsedSeconds?: number | null;
   source?: string;
+  sourceType?: "DRIVER_MOBILE" | "GPS_DEVICE" | null;
+  sourceStatus?: "HEALTHY" | "STALE" | "UNHEALTHY" | "DISCONNECTED" | null;
+  selectionReason?:
+    | "DRIVER_ONLY"
+    | "GPS_ONLY"
+    | "GPS_PRIORITY"
+    | "DRIVER_PRIORITY"
+    | "GPS_FALLBACK_TO_DRIVER"
+    | "DRIVER_FALLBACK_TO_GPS"
+    | "MOST_RECENT_HEALTHY"
+    | "NO_HEALTHY_SOURCE"
+    | "STICKY_PREVIOUS_SOURCE"
+    | "HOLD_LAST_GOOD_STATE"
+    | null;
   recordedAt: string;
 };
 
@@ -112,6 +126,9 @@ export function emitTripLocationUpdated(payload: TripLocationRealtimePayload) {
     distanceDeltaMeters: payload.distanceDeltaMeters ?? null,
     elapsedSeconds: payload.elapsedSeconds ?? null,
     source: payload.source ?? "FILTERED_SERVER",
+    sourceType: payload.sourceType ?? null,
+    sourceStatus: payload.sourceStatus ?? null,
+    selectionReason: payload.selectionReason ?? null,
     recordedAt: payload.recordedAt,
     updatedAt: payload.recordedAt,
   });
