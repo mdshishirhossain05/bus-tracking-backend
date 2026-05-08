@@ -10,6 +10,7 @@ const testUser = {
   fullName: "Session Test User",
   email: "session.test.user@example.com",
   password: "Password123!",
+  studentId: "TP-SESSION-001",
 };
 
 describe("Auth session flow", () => {
@@ -26,6 +27,7 @@ describe("Auth session flow", () => {
 
     const cookies = loginRes.headers["set-cookie"];
     expect(cookies).toBeDefined();
+    expect(Array.isArray(cookies)).toBe(true);
 
     const refreshRes = await request(app)
       .post("/api/v1/auth/refresh")
@@ -48,6 +50,8 @@ describe("Auth session flow", () => {
     const loginRes = await registerAndLogin(app, testUser);
 
     const cookies = loginRes.headers["set-cookie"];
+    expect(cookies).toBeDefined();
+    expect(Array.isArray(cookies)).toBe(true);
 
     const meRes = await request(app)
       .get("/api/v1/auth/me")
@@ -64,6 +68,8 @@ describe("Auth session flow", () => {
     const loginRes = await registerAndLogin(app, testUser);
 
     const cookies = loginRes.headers["set-cookie"];
+    expect(cookies).toBeDefined();
+    expect(Array.isArray(cookies)).toBe(true);
 
     const sessionsRes = await request(app)
       .get("/api/v1/auth/sessions")
@@ -84,6 +90,8 @@ describe("Auth session flow", () => {
     const loginRes = await registerAndLogin(app, testUser);
 
     const cookies = loginRes.headers["set-cookie"];
+    expect(cookies).toBeDefined();
+    expect(Array.isArray(cookies)).toBe(true);
 
     const logoutRes = await request(app)
       .post("/api/v1/auth/logout")
@@ -98,6 +106,8 @@ describe("Auth session flow", () => {
     const loginRes = await registerAndLogin(app, testUser);
 
     const cookies = loginRes.headers["set-cookie"];
+    expect(cookies).toBeDefined();
+    expect(Array.isArray(cookies)).toBe(true);
 
     const logoutAllRes = await request(app)
       .post("/api/v1/auth/logout-all")
@@ -110,13 +120,19 @@ describe("Auth session flow", () => {
 
   it("POST /api/v1/auth/logout-others should keep current session alive", async () => {
     const loginRes1 = await registerAndLogin(app, testUser);
+
     const cookies1 = loginRes1.headers["set-cookie"];
+    expect(cookies1).toBeDefined();
+    expect(Array.isArray(cookies1)).toBe(true);
 
     const loginRes2 = await request(app).post("/api/v1/auth/login").send({
       email: testUser.email,
       password: testUser.password,
     });
+
     const cookies2 = loginRes2.headers["set-cookie"];
+    expect(cookies2).toBeDefined();
+    expect(Array.isArray(cookies2)).toBe(true);
 
     const logoutOthersRes = await request(app)
       .post("/api/v1/auth/logout-others")
@@ -146,13 +162,19 @@ describe("Auth session flow", () => {
 
   it("DELETE /api/v1/auth/sessions/:sessionId should revoke one session", async () => {
     const loginRes1 = await registerAndLogin(app, testUser);
+
     const cookies1 = loginRes1.headers["set-cookie"];
+    expect(cookies1).toBeDefined();
+    expect(Array.isArray(cookies1)).toBe(true);
 
     const loginRes2 = await request(app).post("/api/v1/auth/login").send({
       email: testUser.email,
       password: testUser.password,
     });
+
     const cookies2 = loginRes2.headers["set-cookie"];
+    expect(cookies2).toBeDefined();
+    expect(Array.isArray(cookies2)).toBe(true);
 
     const sessionsRes = await request(app)
       .get("/api/v1/auth/sessions")

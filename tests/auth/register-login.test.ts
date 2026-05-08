@@ -2,6 +2,10 @@ import request from "supertest";
 import { afterAll, beforeEach, describe, expect, it } from "vitest";
 import { makeTestApp } from "../helpers/app.js";
 import { deleteUserByEmail } from "../helpers/db.js";
+import {
+  buildVerifiedPassengerRegistrationPayload,
+  registerPassengerForTest,
+} from "../helpers/auth.js";
 
 const app = makeTestApp();
 
@@ -9,6 +13,7 @@ const testUser = {
   fullName: "Test Passenger",
   email: "test.passenger@example.com",
   password: "Password123!",
+  studentId: "TP-TEST-001",
 };
 
 describe("Auth register + login", () => {
@@ -21,7 +26,7 @@ describe("Auth register + login", () => {
   });
 
   it("POST /api/v1/auth/register should create a new passenger", async () => {
-    const res = await request(app).post("/api/v1/auth/register").send(testUser);
+    const res = await registerPassengerForTest(app, testUser);
 
     expect(res.status).toBe(201);
     expect(res.body.success).toBe(true);
@@ -37,9 +42,14 @@ describe("Auth register + login", () => {
   });
 
   it("POST /api/v1/auth/register should reject duplicate email", async () => {
-    await request(app).post("/api/v1/auth/register").send(testUser);
+    await registerPassengerForTest(app, testUser);
 
-    const res = await request(app).post("/api/v1/auth/register").send(testUser);
+    const duplicatePayload =
+      await buildVerifiedPassengerRegistrationPayload(testUser);
+
+    const res = await request(app)
+      .post("/api/v1/auth/register")
+      .send(duplicatePayload);
 
     expect(res.status).toBe(409);
     expect(res.body.success).toBe(false);
@@ -48,7 +58,7 @@ describe("Auth register + login", () => {
   });
 
   it("POST /api/v1/auth/login should login successfully and set cookies", async () => {
-    await request(app).post("/api/v1/auth/register").send(testUser);
+    await registerPassengerForTest(app, testUser);
 
     const res = await request(app).post("/api/v1/auth/login").send({
       email: testUser.email,
@@ -75,7 +85,7 @@ describe("Auth register + login", () => {
   });
 
   it("POST /api/v1/auth/login should reject wrong password", async () => {
-    await request(app).post("/api/v1/auth/register").send(testUser);
+    await registerPassengerForTest(app, testUser);
 
     const res = await request(app).post("/api/v1/auth/login").send({
       email: testUser.email,

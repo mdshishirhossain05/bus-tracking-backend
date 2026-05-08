@@ -3,7 +3,7 @@ import path from "path";
 import { afterAll } from "vitest";
 import { prisma } from "../../src/config/prisma.js";
 config({
-    path: path.resolve(process.cwd(), ".env.test"),
+  path: path.resolve(process.cwd(), ".env.test"),
 });
 /**
  * Important:
@@ -15,6 +15,6 @@ config({
  * - Forcing Redis connection in global setup causes hook timeouts
  */
 afterAll(async () => {
-    await prisma.$disconnect();
+  await prisma.$disconnect();
 });
 //# sourceMappingURL=env.setup.js.map

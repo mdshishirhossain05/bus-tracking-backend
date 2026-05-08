@@ -1,20 +1,30 @@
-import request from "supertest";
-import type { Express } from "express";
+import { prisma } from "../../src/config/prisma.js";
 
-export async function registerAndLogin(
-  app: Express,
-  user: {
-    fullName: string;
-    email: string;
-    password: string;
-  },
-) {
-  await request(app).post("/api/v1/auth/register").send(user);
+export async function deleteUserByEmail(email: string) {
+  const normalizedEmail = email.trim().toLowerCase();
 
-  const loginRes = await request(app).post("/api/v1/auth/login").send({
-    email: user.email,
-    password: user.password,
+  await prisma.emailVerificationOtp.deleteMany({
+    where: {
+      email: normalizedEmail,
+    },
   });
 
-  return loginRes;
+  await prisma.user.deleteMany({
+    where: {
+      email: normalizedEmail,
+    },
+  });
+}
+
+export async function enablePassengerSelfRegistrationForTests() {
+  await prisma.appConfig.upsert({
+    where: { id: 1 },
+    create: {
+      id: 1,
+      passengerSelfRegistrationEnabled: true,
+    },
+    update: {
+      passengerSelfRegistrationEnabled: true,
+    },
+  });
 }

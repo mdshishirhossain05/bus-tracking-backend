@@ -1,22 +1,30 @@
-import { config } from "dotenv";
-import path from "path";
-import { afterAll } from "vitest";
 import { prisma } from "../../src/config/prisma.js";
 
-config({
-  path: path.resolve(process.cwd(), ".env.test"),
-});
+export async function deleteUserByEmail(email: string) {
+  const normalizedEmail = email.trim().toLowerCase();
 
-/**
- * Important:
- * Do NOT auto-connect Redis here.
- *
- * Reason:
- * - Some test environments may not have Redis running
- * - Your health tests already tolerate 503
- * - Forcing Redis connection in global setup causes hook timeouts
- */
+  await prisma.emailVerificationOtp.deleteMany({
+    where: {
+      email: normalizedEmail,
+    },
+  });
 
-afterAll(async () => {
-  await prisma.$disconnect();
-});
+  await prisma.user.deleteMany({
+    where: {
+      email: normalizedEmail,
+    },
+  });
+}
+
+export async function enablePassengerSelfRegistrationForTests() {
+  await prisma.appConfig.upsert({
+    where: { id: 1 },
+    create: {
+      id: 1,
+      passengerSelfRegistrationEnabled: true,
+    },
+    update: {
+      passengerSelfRegistrationEnabled: true,
+    },
+  });
+}
