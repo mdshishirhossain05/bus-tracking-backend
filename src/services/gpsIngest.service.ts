@@ -6,6 +6,7 @@ import { arbitrateTripTrackingSource } from "./sourceArbitration.service.js";
 import {
   emitTripEtaUpdated,
   emitTripLocationUpdated,
+  emitTripStopArrival,
 } from "../sockets/tripRealtime.js";
 import { computeNextStopAndEta } from "./eta.service.js";
 import { getStopsForTrip } from "./tripStopsCache.service.js";
@@ -13,6 +14,7 @@ import { getLatestArrivedStopForTrip } from "./stopArrivalProgress.service.js";
 import { logEtaUpdated } from "./tripEvent.service.js";
 import { maybeAutoStartTripFromTelematicsPacket } from "./telematicsLifecycle.service.js";
 import { maybeAutoEndTripService } from "./tripLifecycle.service.js";
+import { detectStopArrival } from "./arrival.service.js";
 
 type JsonPrimitive = string | number | boolean | null;
 type JsonValue = JsonPrimitive | JsonValue[] | { [key: string]: JsonValue };
@@ -369,6 +371,57 @@ async function recomputeAndPublishEtaFromCanonical(params: {
   return eta;
 }
 
+async function detectAndPublishGpsStopArrival(params: {
+  tripId: string;
+  routeId: string;
+  busId: string;
+  driverId: string;
+  currentLat: number;
+  currentLng: number;
+  recordedAt: Date;
+}) {
+  const {
+    tripId,
+    routeId,
+    busId,
+    driverId,
+    currentLat,
+    currentLng,
+    recordedAt,
+  } = params;
+
+  const arrival = await detectStopArrival({
+    tripId,
+    currentLat,
+    currentLng,
+    recordedAt,
+  });
+
+  if (!arrival) {
+    return null;
+  }
+
+  emitTripStopArrival({
+    tripId,
+    routeId,
+    busId,
+    driverId,
+    stopId: arrival.stopId,
+    stopName: arrival.stopName,
+    stopOrder: arrival.stopOrder,
+    arrivalTime: arrival.arrivalTime,
+    recordedAt: arrival.arrivalTime,
+    distanceMeters: arrival.distanceMeters,
+    dayType: arrival.dayType,
+    scheduledTime: arrival.scheduledTime,
+    scheduledDateUtc: arrival.scheduledDateUtc,
+    delayMinutes: arrival.delayMinutes,
+    status: arrival.status,
+  });
+
+  return arrival;
+}
+
 export async function ingestGpsDeviceLocationService(input: GpsIngestInput) {
   const speedKmh = sanitizeSpeedKmh(input.speedKmh);
   const heading = sanitizeHeading(input.heading);
@@ -630,7 +683,11 @@ export async function ingestGpsDeviceLocationService(input: GpsIngestInput) {
     ReturnType<typeof maybeAutoEndTripService>
   > | null = null;
 
+  let arrival: Awaited<ReturnType<typeof detectStopArrival>> | null = null;
+
   if (runningTrip && selectedState) {
+    const selectedRecordedAt = new Date(selectedState.recordedAt);
+
     emitTripLocationUpdated({
       tripId: runningTrip.id,
       routeId: runningTrip.routeId,
@@ -659,7 +716,20 @@ export async function ingestGpsDeviceLocationService(input: GpsIngestInput) {
         (selectedState.sourceType === "GPS_DEVICE"
           ? "GPS Device"
           : "Driver Mobile"),
+      sourceType: selectedState.sourceType,
+      sourceStatus: selectedState.sourceStatus,
+      selectionReason: selectedState.selectionReason,
       recordedAt: selectedState.recordedAt,
+    });
+
+    arrival = await detectAndPublishGpsStopArrival({
+      tripId: runningTrip.id,
+      routeId: runningTrip.routeId,
+      busId: assignment.busId,
+      driverId: runningTrip.driverId,
+      currentLat: selectedState.lat,
+      currentLng: selectedState.lng,
+      recordedAt: selectedRecordedAt,
     });
 
     await recomputeAndPublishEtaFromCanonical({
@@ -675,7 +745,7 @@ export async function ingestGpsDeviceLocationService(input: GpsIngestInput) {
       isStationary: selectedState.isStationary,
       currentLat: selectedState.lat,
       currentLng: selectedState.lng,
-      updatedAt: new Date(selectedState.recordedAt),
+      updatedAt: selectedRecordedAt,
     }).catch(() => null);
 
     autoEndResult = await maybeAutoEndTripService({
@@ -693,7 +763,7 @@ export async function ingestGpsDeviceLocationService(input: GpsIngestInput) {
         isStationary: selectedState.isStationary,
       }),
       isStationary: selectedState.isStationary,
-      recordedAt: new Date(selectedState.recordedAt),
+      recordedAt: selectedRecordedAt,
     });
   }
 
@@ -729,6 +799,17 @@ export async function ingestGpsDeviceLocationService(input: GpsIngestInput) {
         }
       : null,
     autoEnd: autoEndResult,
+    arrival: arrival
+      ? {
+          stopId: arrival.stopId,
+          stopName: arrival.stopName,
+          stopOrder: arrival.stopOrder,
+          arrivalTime: arrival.arrivalTime,
+          distanceMeters: arrival.distanceMeters,
+          delayMinutes: arrival.delayMinutes,
+          status: arrival.status,
+        }
+      : null,
     telemetry: {
       lat: input.lat,
       lng: input.lng,
