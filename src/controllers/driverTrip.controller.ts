@@ -604,7 +604,7 @@ export async function sendLocation(req: AuthRequest, res: Response) {
 
   let arrival: Awaited<ReturnType<typeof detectStopArrival>> | null = null;
 
-  if (persist.persisted) {
+  if (filtered.accepted) {
     arrival = await detectStopArrival({
       tripId,
       currentLat: selectedState.lat,
@@ -619,6 +619,9 @@ export async function sendLocation(req: AuthRequest, res: Response) {
           driverId,
           stopId: arrival.stopId,
           stopName: arrival.stopName,
+          stopOrder: arrival.stopOrder,
+          distanceMeters: arrival.distanceMeters,
+          persisted: persist.persisted,
         },
         "stop arrival detected",
       );

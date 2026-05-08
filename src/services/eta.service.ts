@@ -123,6 +123,16 @@ function buildNormalizedStops(stops: StopPoint[]) {
       lat: toNumber(stop.lat),
       lng: toNumber(stop.lng),
     }))
+    .filter((stop) => {
+      return (
+        Number.isFinite(stop.lat) &&
+        Number.isFinite(stop.lng) &&
+        stop.lat >= -90 &&
+        stop.lat <= 90 &&
+        stop.lng >= -180 &&
+        stop.lng <= 180
+      );
+    })
     .sort((a, b) => a.stopOrder - b.stopOrder);
 }
 
@@ -225,10 +235,47 @@ function estimateRouteProgressMeters(params: {
     best ?? {
       progressMeters: 0,
       segmentStartIndex: 0,
-      segmentEndIndex: 1,
+      segmentEndIndex: Math.min(1, stops.length - 1),
       crossTrackDistanceMeters: 0,
     }
   );
+}
+
+function getTrustedSpeed(params: {
+  lastSpeedKmh?: number | null;
+  rollingAverageSpeedKmh?: number | null;
+  defaultSpeedKmh: number;
+}) {
+  const { lastSpeedKmh, rollingAverageSpeedKmh, defaultSpeedKmh } = params;
+
+  const trustedRollingSpeed =
+    typeof rollingAverageSpeedKmh === "number" &&
+    Number.isFinite(rollingAverageSpeedKmh) &&
+    rollingAverageSpeedKmh >= 5
+      ? rollingAverageSpeedKmh
+      : null;
+
+  const trustedLiveSpeed =
+    typeof lastSpeedKmh === "number" &&
+    Number.isFinite(lastSpeedKmh) &&
+    lastSpeedKmh >= 4
+      ? lastSpeedKmh
+      : null;
+
+  const speed = trustedRollingSpeed ?? trustedLiveSpeed ?? defaultSpeedKmh;
+
+  let confidence: "HIGH" | "MEDIUM" | "LOW" = "LOW";
+  if (trustedRollingSpeed != null && trustedRollingSpeed >= 8) {
+    confidence = "HIGH";
+  } else if (trustedLiveSpeed != null && trustedLiveSpeed >= 6) {
+    confidence = "MEDIUM";
+  }
+
+  return {
+    speed,
+    confidence,
+    trustedRollingSpeed,
+  };
 }
 
 export function computeNextStopAndEta(opts: {
@@ -267,6 +314,7 @@ export function computeNextStopAndEta(opts: {
   if (!nearest) return null;
 
   const cumulative = buildCumulativeDistances(orderedStops);
+  const routeTotalMeters = cumulative[cumulative.length - 1] ?? 0;
 
   const progress = estimateRouteProgressMeters({
     stops: orderedStops,
@@ -289,23 +337,13 @@ export function computeNextStopAndEta(opts: {
   const arrivalLockedFinal =
     lastArrivedIndex >= 0 && lastArrivedIndex === orderedStops.length - 1;
 
+  const speedInfo = getTrustedSpeed({
+    lastSpeedKmh,
+    rollingAverageSpeedKmh,
+    defaultSpeedKmh,
+  });
+
   if (arrivalLockedFinal) {
-    const trustedRollingSpeed =
-      typeof rollingAverageSpeedKmh === "number" &&
-      Number.isFinite(rollingAverageSpeedKmh) &&
-      rollingAverageSpeedKmh >= 5
-        ? rollingAverageSpeedKmh
-        : null;
-
-    const trustedLiveSpeed =
-      typeof lastSpeedKmh === "number" &&
-      Number.isFinite(lastSpeedKmh) &&
-      lastSpeedKmh >= 4
-        ? lastSpeedKmh
-        : null;
-
-    const speed = trustedRollingSpeed ?? trustedLiveSpeed ?? defaultSpeedKmh;
-
     return {
       nearestStop: {
         stopId: nearest.s.stopId,
@@ -315,17 +353,12 @@ export function computeNextStopAndEta(opts: {
       },
       nextStop: null,
       etaMinutes: null,
-      usedSpeedKmh: Number(speed.toFixed(2)),
+      usedSpeedKmh: Number(speedInfo.speed.toFixed(2)),
       rollingAverageSpeedKmh:
-        trustedRollingSpeed != null
-          ? Number(trustedRollingSpeed.toFixed(2))
+        speedInfo.trustedRollingSpeed != null
+          ? Number(speedInfo.trustedRollingSpeed.toFixed(2))
           : null,
-      confidence:
-        trustedRollingSpeed != null && trustedRollingSpeed >= 8
-          ? "HIGH"
-          : trustedLiveSpeed != null && trustedLiveSpeed >= 6
-            ? "MEDIUM"
-            : "LOW",
+      confidence: speedInfo.confidence,
       finalStopReached: true,
     };
   }
@@ -347,10 +380,11 @@ export function computeNextStopAndEta(opts: {
       nextStopIndex = nearestIndex + 1;
     }
   } else {
-    const epsilonMeters = Math.max(3, arrivalRadiusMeters * 0.15);
+    const routeProgressBufferMeters = Math.max(3, arrivalRadiusMeters * 0.15);
 
     const projectedCandidateIndex = orderedStops.findIndex(
-      (_, idx) => cumulative[idx]! > progress.progressMeters + epsilonMeters,
+      (_, idx) =>
+        cumulative[idx]! > progress.progressMeters + routeProgressBufferMeters,
     );
 
     let candidateIndex =
@@ -372,17 +406,30 @@ export function computeNextStopAndEta(opts: {
 
   const finalStopReached =
     nextStopIndex == null &&
-    ((atNearestStop && nearestIsFinal) || arrivalLockedFinal);
+    ((atNearestStop && nearestIsFinal) ||
+      progress.progressMeters >= routeTotalMeters - arrivalRadiusMeters * 0.5);
 
   const next =
     nextStopIndex != null
       ? (() => {
           const stop = orderedStops[nextStopIndex]!;
-          const distanceMeters = haversineMeters(
+          const stopProgressMeters =
+            cumulative[nextStopIndex] ?? routeTotalMeters;
+          const routeRemainingMeters = Math.max(
+            0,
+            stopProgressMeters - progress.progressMeters,
+          );
+          const directDistanceMeters = haversineMeters(
             currentLat,
             currentLng,
             stop.lat,
             stop.lng,
+          );
+          const distanceMeters = Math.max(
+            Math.min(routeRemainingMeters, directDistanceMeters),
+            directDistanceMeters <= arrivalRadiusMeters
+              ? directDistanceMeters
+              : 0,
           );
 
           return {
@@ -394,32 +441,12 @@ export function computeNextStopAndEta(opts: {
         })()
       : null;
 
-  const trustedRollingSpeed =
-    typeof rollingAverageSpeedKmh === "number" &&
-    Number.isFinite(rollingAverageSpeedKmh) &&
-    rollingAverageSpeedKmh >= 5
-      ? rollingAverageSpeedKmh
-      : null;
-
-  const trustedLiveSpeed =
-    typeof lastSpeedKmh === "number" &&
-    Number.isFinite(lastSpeedKmh) &&
-    lastSpeedKmh >= 4
-      ? lastSpeedKmh
-      : null;
-
-  const speed = trustedRollingSpeed ?? trustedLiveSpeed ?? defaultSpeedKmh;
-
-  let confidence: "HIGH" | "MEDIUM" | "LOW" = "LOW";
-  if (trustedRollingSpeed != null && trustedRollingSpeed >= 8) {
-    confidence = "HIGH";
-  } else if (trustedLiveSpeed != null && trustedLiveSpeed >= 6) {
-    confidence = "MEDIUM";
-  }
-
   const etaMinutes =
-    next && speed > 0
-      ? Math.max(1, Math.round((next.distanceMeters / 1000 / speed) * 60))
+    next && speedInfo.speed > 0
+      ? Math.max(
+          1,
+          Math.round((next.distanceMeters / 1000 / speedInfo.speed) * 60),
+        )
       : null;
 
   return {
@@ -431,12 +458,12 @@ export function computeNextStopAndEta(opts: {
     },
     nextStop: next,
     etaMinutes: finalStopReached ? null : etaMinutes,
-    usedSpeedKmh: Number(speed.toFixed(2)),
+    usedSpeedKmh: Number(speedInfo.speed.toFixed(2)),
     rollingAverageSpeedKmh:
-      trustedRollingSpeed != null
-        ? Number(trustedRollingSpeed.toFixed(2))
+      speedInfo.trustedRollingSpeed != null
+        ? Number(speedInfo.trustedRollingSpeed.toFixed(2))
         : null,
-    confidence,
+    confidence: speedInfo.confidence,
     finalStopReached,
   };
 }
