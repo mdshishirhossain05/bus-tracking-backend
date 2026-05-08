@@ -242,8 +242,8 @@ function estimateRouteProgressMeters(params: {
 }
 
 function getTrustedSpeed(params: {
-  lastSpeedKmh?: number | null;
-  rollingAverageSpeedKmh?: number | null;
+  lastSpeedKmh: number | null | undefined;
+  rollingAverageSpeedKmh: number | null | undefined;
   defaultSpeedKmh: number;
 }) {
   const { lastSpeedKmh, rollingAverageSpeedKmh, defaultSpeedKmh } = params;
@@ -415,16 +415,19 @@ export function computeNextStopAndEta(opts: {
           const stop = orderedStops[nextStopIndex]!;
           const stopProgressMeters =
             cumulative[nextStopIndex] ?? routeTotalMeters;
+
           const routeRemainingMeters = Math.max(
             0,
             stopProgressMeters - progress.progressMeters,
           );
+
           const directDistanceMeters = haversineMeters(
             currentLat,
             currentLng,
             stop.lat,
             stop.lng,
           );
+
           const distanceMeters = Math.max(
             Math.min(routeRemainingMeters, directDistanceMeters),
             directDistanceMeters <= arrivalRadiusMeters
