@@ -3,7 +3,9 @@ import { afterAll, beforeEach, describe, expect, it } from "vitest";
 import { makeTestApp } from "../helpers/app.js";
 import { deleteUserByEmail } from "../helpers/db.js";
 import {
+  approveAndActivatePassenger,
   buildVerifiedPassengerRegistrationPayload,
+  registerAndLogin,
   registerPassengerForTest,
 } from "../helpers/auth.js";
 
@@ -30,7 +32,9 @@ describe("Auth register + login", () => {
 
     expect(res.status).toBe(201);
     expect(res.body.success).toBe(true);
-    expect(res.body.message).toBe("Passenger registered successfully");
+    expect(res.body.message).toBe(
+      "Passenger registration submitted successfully. Awaiting admin approval.",
+    );
 
     expect(res.body.data.user).toMatchObject({
       fullName: testUser.fullName,
@@ -58,12 +62,7 @@ describe("Auth register + login", () => {
   });
 
   it("POST /api/v1/auth/login should login successfully and set cookies", async () => {
-    await registerPassengerForTest(app, testUser);
-
-    const res = await request(app).post("/api/v1/auth/login").send({
-      email: testUser.email,
-      password: testUser.password,
-    });
+    const res = await registerAndLogin(app, testUser);
 
     expect(res.status).toBe(200);
     expect(res.body.success).toBe(true);
@@ -86,6 +85,7 @@ describe("Auth register + login", () => {
 
   it("POST /api/v1/auth/login should reject wrong password", async () => {
     await registerPassengerForTest(app, testUser);
+    await approveAndActivatePassenger(testUser.email);
 
     const res = await request(app).post("/api/v1/auth/login").send({
       email: testUser.email,
