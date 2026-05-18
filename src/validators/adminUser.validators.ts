@@ -38,6 +38,9 @@ export const createAdminUserSchema = z.object({
     .max(32)
     .optional()
     .or(z.literal("").transform(() => undefined)),
+  academicDepartment: z.string().trim().max(120).optional(),
+  academicBatch: z.string().trim().max(120).optional(),
+  transportPickupPoint: z.string().trim().max(160).optional(),
 });
 
 export const updateAdminUserSchema = z.object({
