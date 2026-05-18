@@ -75,3 +75,46 @@ export async function sendPassengerRegistrationOtpEmail(params: {
     `,
   });
 }
+
+export async function sendPasswordResetOtpEmail(params: {
+  to: string;
+  otp: string;
+  expiresInMinutes: number;
+}) {
+  const transporter = createTransporter();
+
+  if (!transporter) {
+    console.info(
+      `[DEV ONLY] Password reset OTP for ${params.to}: ${params.otp}`,
+    );
+    return;
+  }
+
+  await transporter.sendMail({
+    from: env.SMTP_FROM,
+    to: params.to,
+    subject: "Your password reset verification code",
+    text: [
+      "We received a request to reset your password.",
+      "",
+      "Your password reset verification code is:",
+      "",
+      params.otp,
+      "",
+      `This code will expire in ${params.expiresInMinutes} minutes.`,
+      "",
+      "If you did not request a password reset, you can safely ignore this email.",
+    ].join("\n"),
+    html: `
+      <div style="font-family:Arial,sans-serif;line-height:1.6;color:#0f172a">
+        <h2>Password reset verification</h2>
+        <p>We received a request to reset your password. Your verification code is:</p>
+        <div style="font-size:28px;font-weight:700;letter-spacing:6px;background:#f1f5f9;border-radius:12px;padding:14px 18px;display:inline-block">
+          ${params.otp}
+        </div>
+        <p>This code will expire in <strong>${params.expiresInMinutes} minutes</strong>.</p>
+        <p style="color:#64748b">If you did not request a password reset, you can safely ignore this email.</p>
+      </div>
+    `,
+  });
+}

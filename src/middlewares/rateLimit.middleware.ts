@@ -28,3 +28,15 @@ export const refreshLimiter = rateLimit({
     code: "RATE_LIMIT_EXCEEDED",
   },
 });
+
+export const forgotPasswordLimiter = rateLimit({
+  windowMs: ms(process.env.RL_FORGOT_PASSWORD_WINDOW_MS ?? "", 10 * 60 * 1000),
+  max: ms(process.env.RL_FORGOT_PASSWORD_MAX ?? "", 10),
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: {
+    success: false,
+    message: "Too many password reset requests. Try again later.",
+    code: "RATE_LIMIT_EXCEEDED",
+  },
+});

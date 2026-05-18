@@ -125,23 +125,26 @@ model AppConfig {
 }
 
 model User {
-  id                 String                 @id @default(uuid())
-  fullName           String
-  email              String                 @unique
-  passwordHash       String
-  role               UserRole
-  isActive           Boolean                @default(true)
-  studentId          String?                @unique
-  phoneNumber        String?
-  approvalStatus     UserApprovalStatus     @default(APPROVED)
-  registrationSource UserRegistrationSource @default(ADMIN)
-  approvedAt         DateTime?
-  approvedByUserId   String?
-  rejectedAt         DateTime?
-  rejectedByUserId   String?
-  rejectionReason    String?
-  createdAt          DateTime               @default(now())
-  updatedAt          DateTime               @updatedAt
+  id                   String                 @id @default(uuid())
+  fullName             String
+  email                String                 @unique
+  passwordHash         String
+  role                 UserRole
+  isActive             Boolean                @default(true)
+  studentId            String?                @unique
+  phoneNumber          String?
+  academicDepartment   String?
+  academicBatch        String?
+  transportPickupPoint String?
+  approvalStatus       UserApprovalStatus     @default(APPROVED)
+  registrationSource   UserRegistrationSource @default(ADMIN)
+  approvedAt           DateTime?
+  approvedByUserId     String?
+  rejectedAt           DateTime?
+  rejectedByUserId     String?
+  rejectionReason      String?
+  createdAt            DateTime               @default(now())
+  updatedAt            DateTime               @updatedAt
 
   driverTrips              Trip[]                @relation("DriverTrips")
   sessions                 Session[]
