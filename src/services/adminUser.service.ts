@@ -27,6 +27,20 @@ function buildUserWhere(query: ListAdminUsersQuery): Prisma.UserWhereInput {
   if (query.registrationSource)
     where.registrationSource = query.registrationSource;
 
+  if (query.academicDepartment && query.academicDepartment.length > 0) {
+    where.academicDepartment = {
+      contains: query.academicDepartment,
+      mode: "insensitive",
+    };
+  }
+
+  if (query.academicBatch && query.academicBatch.length > 0) {
+    where.academicBatch = {
+      contains: query.academicBatch,
+      mode: "insensitive",
+    };
+  }
+
   if (query.search && query.search.trim().length > 0) {
     const search = query.search.trim();
     where.OR = [
