@@ -13,6 +13,7 @@ import { adminUserRouter } from "./admin/user.routes.js";
 import { adminScheduleRouter } from "./admin/schedule.routes.js";
 import { adminServiceScheduleRouter } from "./admin/serviceSchedule.routes.js";
 import { adminOperationsRouter } from "./admin/operations.routes.js";
+import { adminAuditLogRouter } from "./admin/auditLog.routes.js";
 
 import { driverTripRouter } from "./driver.trip.routes.js";
 import { gpsIngestRouter } from "./gps.ingest.routes.js";
@@ -48,6 +49,7 @@ export function registerRoutes(app: Express) {
   app.use(apiBase, adminScheduleRouter);
   app.use(apiBase, adminServiceScheduleRouter);
   app.use(apiBase, adminOperationsRouter);
+  app.use(apiBase, adminAuditLogRouter);
 
   /**
    * Driver routes
