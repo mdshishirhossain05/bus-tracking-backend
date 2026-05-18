@@ -1,9 +1,34 @@
 import { Router } from "express";
 import { requireAuth, requireRole } from "../../middlewares/auth.middleware.js";
 import { asyncHandler } from "../../utils/asyncHandler.js";
-import { getAdminDelayReport } from "../../controllers/admin/analytics.controller.js";
+import {
+  getAdminDelayReport,
+  getAdminAnalyticsOverview,
+} from "../../controllers/admin/analytics.controller.js";
 
 export const adminAnalyticsRouter = Router();
+
+/**
+ * @openapi
+ * /admin/analytics/overview:
+ *   get:
+ *     summary: Admin analytics overview
+ *     description: Aggregate trip, route and arrival statistics for the admin analytics dashboard.
+ *     tags:
+ *       - Admin Operations
+ *     security:
+ *       - bearerAuth: []
+ *       - cookieAuth: []
+ *     responses:
+ *       200:
+ *         description: Analytics overview fetched successfully
+ */
+adminAnalyticsRouter.get(
+  "/admin/analytics/overview",
+  requireAuth,
+  requireRole("ADMIN"),
+  asyncHandler(getAdminAnalyticsOverview),
+);
 
 /**
  * @openapi

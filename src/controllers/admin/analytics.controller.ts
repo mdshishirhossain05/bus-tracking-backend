@@ -2,7 +2,19 @@ import type { Request, Response } from "express";
 import { sendSuccess } from "../../utils/apiResponse.js";
 import { AppError } from "../../utils/appError.js";
 import { delayReportQuerySchema } from "../../validators/analytics.validators.js";
-import { getDelayReportService } from "../../services/analytics.service.js";
+import {
+  getDelayReportService,
+  getAnalyticsOverviewService,
+} from "../../services/analytics.service.js";
+
+export async function getAdminAnalyticsOverview(_req: Request, res: Response) {
+  const data = await getAnalyticsOverviewService();
+
+  return sendSuccess(res, {
+    message: "Analytics overview fetched successfully",
+    data,
+  });
+}
 
 export async function getAdminDelayReport(req: Request, res: Response) {
   const parsed = delayReportQuerySchema.safeParse(req.query);
