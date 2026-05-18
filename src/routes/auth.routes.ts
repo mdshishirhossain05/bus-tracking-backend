@@ -15,12 +15,18 @@ import {
   requestPassengerRegistrationOtp,
   verifyPassengerRegistrationOtp,
 } from "../controllers/auth.controller.js";
+import {
+  requestPasswordReset,
+  verifyPasswordResetOtp,
+  resetPassword,
+} from "../controllers/passwordReset.controller.js";
 import { requireAuth } from "../middlewares/auth.middleware.js";
 import { noStoreResponse } from "../middlewares/cache.middleware.js";
 import { asyncHandler } from "../utils/asyncHandler.js";
 import {
   loginLimiter,
   refreshLimiter,
+  forgotPasswordLimiter,
 } from "../middlewares/rateLimit.middleware.js";
 
 export const authRouter = Router();
@@ -42,6 +48,19 @@ authRouter.post(
 );
 
 authRouter.post("/auth/register", asyncHandler(registerPassenger));
+
+authRouter.post(
+  "/auth/forgot-password/request",
+  forgotPasswordLimiter,
+  asyncHandler(requestPasswordReset),
+);
+
+authRouter.post(
+  "/auth/forgot-password/verify",
+  asyncHandler(verifyPasswordResetOtp),
+);
+
+authRouter.post("/auth/reset-password", asyncHandler(resetPassword));
 
 authRouter.post("/auth/login", loginLimiter, asyncHandler(login));
 

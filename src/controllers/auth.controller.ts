@@ -1,9 +1,3 @@
-import {
-  createHash,
-  randomBytes,
-  randomInt,
-  timingSafeEqual,
-} from "node:crypto";
 import type { Request, Response } from "express";
 import { prisma } from "../config/prisma.js";
 import { env } from "../config/env.js";
@@ -32,6 +26,12 @@ import { writeAuditLogSafe, getRequestIp } from "../services/audit.service.js";
 import { sendSuccess } from "../utils/apiResponse.js";
 import { AppError } from "../utils/appError.js";
 import { sendPassengerRegistrationOtpEmail } from "../services/email.service.js";
+import {
+  hashSecret,
+  generateOtp,
+  generateVerificationToken,
+  safeHashCompare,
+} from "../utils/otp.js";
 
 const PASSENGER_REGISTRATION_OTP_PURPOSE = "PASSENGER_REGISTRATION";
 
@@ -48,29 +48,6 @@ async function readRegistrationSettings() {
       updatedAt: true,
     },
   });
-}
-
-function hashSecret(value: string) {
-  return createHash("sha256")
-    .update(`${value}:${env.JWT_ACCESS_SECRET}`, "utf8")
-    .digest("hex");
-}
-
-function generateOtp() {
-  return String(randomInt(100000, 1000000));
-}
-
-function generateVerificationToken() {
-  return randomBytes(32).toString("hex");
-}
-
-function safeHashCompare(leftHash: string, rightHash: string) {
-  const left = Buffer.from(leftHash, "hex");
-  const right = Buffer.from(rightHash, "hex");
-
-  if (left.length !== right.length) return false;
-
-  return timingSafeEqual(left, right);
 }
 
 export async function getPublicRegistrationSettings(
@@ -345,6 +322,9 @@ export async function registerPassenger(req: Request, res: Response) {
     password,
     studentId,
     phoneNumber,
+    academicDepartment,
+    academicBatch,
+    transportPickupPoint,
     emailVerificationToken,
   } = parsed.data;
 
@@ -411,6 +391,9 @@ export async function registerPassenger(req: Request, res: Response) {
           role: "PASSENGER",
           studentId,
           phoneNumber: phoneNumber ?? null,
+          academicDepartment: academicDepartment ?? null,
+          academicBatch: academicBatch ?? null,
+          transportPickupPoint: transportPickupPoint ?? null,
           isActive: false,
           approvalStatus: "PENDING_APPROVAL",
           registrationSource: "SELF",
@@ -427,6 +410,9 @@ export async function registerPassenger(req: Request, res: Response) {
           role: true,
           studentId: true,
           phoneNumber: true,
+          academicDepartment: true,
+          academicBatch: true,
+          transportPickupPoint: true,
           approvalStatus: true,
           registrationSource: true,
           isActive: true,
@@ -581,6 +567,9 @@ export async function login(req: Request, res: Response) {
         email: user.email,
         role: user.role,
         isActive: user.isActive,
+        academicDepartment: user.academicDepartment,
+        academicBatch: user.academicBatch,
+        transportPickupPoint: user.transportPickupPoint,
         approvalStatus: user.approvalStatus,
         registrationSource: user.registrationSource,
         createdAt: user.createdAt,
@@ -648,6 +637,9 @@ export async function me(req: AuthRequest, res: Response) {
       isActive: true,
       studentId: true,
       phoneNumber: true,
+      academicDepartment: true,
+      academicBatch: true,
+      transportPickupPoint: true,
       approvalStatus: true,
       registrationSource: true,
       createdAt: true,
@@ -682,7 +674,14 @@ export async function updateMe(req: AuthRequest, res: Response) {
     });
   }
 
-  const { fullName, email, phoneNumber } = parsed.data;
+  const {
+    fullName,
+    email,
+    phoneNumber,
+    academicDepartment,
+    academicBatch,
+    transportPickupPoint,
+  } = parsed.data;
 
   const existingEmailOwner = await prisma.user.findFirst({
     where: {
@@ -706,6 +705,17 @@ export async function updateMe(req: AuthRequest, res: Response) {
       fullName,
       email: email.toLowerCase(),
       phoneNumber: phoneNumber?.trim() || null,
+      // Only included when present in the request, so a partial update
+      // never wipes a field the caller did not send.
+      ...(academicDepartment !== undefined && {
+        academicDepartment: academicDepartment.trim() || null,
+      }),
+      ...(academicBatch !== undefined && {
+        academicBatch: academicBatch.trim() || null,
+      }),
+      ...(transportPickupPoint !== undefined && {
+        transportPickupPoint: transportPickupPoint.trim() || null,
+      }),
     },
     select: {
       id: true,
@@ -715,6 +725,9 @@ export async function updateMe(req: AuthRequest, res: Response) {
       isActive: true,
       studentId: true,
       phoneNumber: true,
+      academicDepartment: true,
+      academicBatch: true,
+      transportPickupPoint: true,
       approvalStatus: true,
       registrationSource: true,
       createdAt: true,

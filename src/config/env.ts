@@ -239,6 +239,29 @@ const envSchema = z.object({
     .positive()
     .default(5),
 
+  FORGOT_PASSWORD_ENABLED: z.coerce.boolean().default(true),
+  PASSWORD_RESET_OTP_TTL_MINUTES: z.coerce
+    .number()
+    .int()
+    .positive()
+    .default(10),
+  PASSWORD_RESET_OTP_RESEND_COOLDOWN_SECONDS: z.coerce
+    .number()
+    .int()
+    .positive()
+    .default(60),
+  PASSWORD_RESET_OTP_MAX_ATTEMPTS: z.coerce
+    .number()
+    .int()
+    .positive()
+    .default(5),
+  RL_FORGOT_PASSWORD_WINDOW_MS: z.coerce
+    .number()
+    .int()
+    .positive()
+    .default(600000),
+  RL_FORGOT_PASSWORD_MAX: z.coerce.number().int().positive().default(10),
+
   BOOTSTRAP_ADMIN_NAME: z.string().optional(),
   BOOTSTRAP_ADMIN_EMAIL: z.string().email().optional(),
   BOOTSTRAP_ADMIN_PASSWORD: z.string().min(8).optional(),
