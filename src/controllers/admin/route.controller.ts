@@ -96,48 +96,55 @@ export async function deleteRoute(req: Request, res: Response) {
 
   const id = idParsed.data;
 
-  const dependencies = await prisma.route.findUnique({
+  const route = await prisma.route.findUnique({
     where: { id },
     select: {
-      _count: {
-        select: {
-          routeStops: true,
-          trips: true,
-          schedules: true,
-          serviceSchedules: true,
-          tripEvents: true,
-        },
-      },
+      isActive: true,
+      _count: { select: { trips: true, serviceSchedules: true } },
     },
   });
 
-  if (!dependencies) {
+  if (!route) {
     return res.status(404).json({ message: "Route not found" });
   }
 
-  const { routeStops, trips, schedules, serviceSchedules, tripEvents } =
-    dependencies._count;
+  // A trip currently in progress must be ended before the route is removed.
+  const runningTrips = await prisma.trip.count({
+    where: { routeId: id, status: "RUNNING" },
+  });
 
-  if (
-    routeStops > 0 ||
-    trips > 0 ||
-    schedules > 0 ||
-    serviceSchedules > 0 ||
-    tripEvents > 0
-  ) {
+  if (runningTrips > 0) {
     return res.status(409).json({
-      message: "Route cannot be deleted because it is in use",
-      dependencies: {
-        routeStops,
-        trips,
-        schedules,
-        serviceSchedules,
-        tripEvents,
-      },
+      message:
+        "This route has a trip in progress. End the active trip before removing the route.",
+      code: "ROUTE_HAS_RUNNING_TRIP",
+    });
+  }
+
+  // Trips and service schedules are history-bearing references. When they
+  // exist the route is archived (kept for historical records) instead of
+  // hard-deleted, so past trip data is never lost.
+  const hasHistory =
+    route._count.trips > 0 || route._count.serviceSchedules > 0;
+
+  if (hasHistory) {
+    if (!route.isActive) {
+      return res.json({
+        message: "Route is already archived.",
+        archived: true,
+      });
+    }
+
+    await prisma.route.update({ where: { id }, data: { isActive: false } });
+
+    return res.json({
+      message:
+        "This route has trip history, so it was archived instead of deleted. It will no longer be available for new trips.",
+      archived: true,
     });
   }
 
   await prisma.route.delete({ where: { id } });
 
-  return res.json({ message: "Route deleted successfully" });
+  return res.json({ message: "Route deleted successfully.", archived: false });
 }
