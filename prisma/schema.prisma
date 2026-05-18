@@ -151,6 +151,7 @@ model User {
   driverTripEvents         TripEvent[]           @relation("DriverTripEvents")
   serviceSchedulesAsDriver ServiceSchedule[]     @relation("DriverServiceSchedules")
   sourceTrackingStates     SourceTrackingState[] @relation("DriverSourceTrackingStates")
+  favoriteRoutes           FavoriteRoute[]
 
   @@index([isActive])
   @@index([role])
@@ -283,8 +284,23 @@ model Route {
   geometry         RouteGeometry?
   tripEvents       TripEvent[]
   serviceSchedules ServiceSchedule[]
+  favoritedBy      FavoriteRoute[]
 
   @@index([isActive])
+}
+
+model FavoriteRoute {
+  id        String   @id @default(uuid())
+  userId    String
+  routeId   String
+  createdAt DateTime @default(now())
+
+  user  User  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  route Route @relation(fields: [routeId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, routeId])
+  @@index([userId])
+  @@index([routeId])
 }
 
 model Stop {
