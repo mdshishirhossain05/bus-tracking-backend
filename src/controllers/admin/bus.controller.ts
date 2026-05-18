@@ -315,59 +315,55 @@ export async function deleteBus(req: Request, res: Response) {
 
   const id = idParsed.data;
 
-  const dependencies = await prisma.bus.findUnique({
+  const bus = await prisma.bus.findUnique({
     where: { id },
     select: {
-      _count: {
-        select: {
-          trips: true,
-          tripEvents: true,
-          serviceSchedules: true,
-          gpsAssignments: true,
-          canonicalStates: true,
-          sourceStates: true,
-        },
-      },
+      isActive: true,
+      _count: { select: { trips: true, serviceSchedules: true } },
     },
   });
 
-  if (!dependencies) {
+  if (!bus) {
     return res.status(404).json({ message: "Bus not found" });
   }
 
-  const {
-    trips,
-    tripEvents,
-    serviceSchedules,
-    gpsAssignments,
-    canonicalStates,
-    sourceStates,
-  } = dependencies._count;
+  // A trip currently in progress must be ended before the bus is removed.
+  const runningTrips = await prisma.trip.count({
+    where: { busId: id, status: "RUNNING" },
+  });
 
-  if (
-    trips > 0 ||
-    tripEvents > 0 ||
-    serviceSchedules > 0 ||
-    gpsAssignments > 0 ||
-    canonicalStates > 0 ||
-    sourceStates > 0
-  ) {
+  if (runningTrips > 0) {
     return res.status(409).json({
-      message: "Bus cannot be deleted because it is in use",
-      dependencies: {
-        trips,
-        tripEvents,
-        serviceSchedules,
-        gpsAssignments,
-        canonicalStates,
-        sourceStates,
-      },
+      message:
+        "This bus has a trip in progress. End the active trip before removing the bus.",
+      code: "BUS_HAS_RUNNING_TRIP",
+    });
+  }
+
+  // Trips and service schedules carry history; when present the bus is
+  // archived instead of hard-deleted so past trip data is preserved.
+  const hasHistory = bus._count.trips > 0 || bus._count.serviceSchedules > 0;
+
+  if (hasHistory) {
+    if (!bus.isActive) {
+      return res.json({
+        message: "Bus is already archived.",
+        archived: true,
+      });
+    }
+
+    await prisma.bus.update({ where: { id }, data: { isActive: false } });
+
+    return res.json({
+      message:
+        "This bus has trip history, so it was archived instead of deleted. It will no longer be available for new trips.",
+      archived: true,
     });
   }
 
   await prisma.bus.delete({ where: { id } });
 
-  return res.json({ message: "Bus deleted successfully" });
+  return res.json({ message: "Bus deleted successfully.", archived: false });
 }
 
 export async function createGpsDevice(req: Request, res: Response) {
@@ -735,12 +731,12 @@ export async function deleteGpsDevice(req: Request, res: Response) {
     return res.status(400).json({ message: "Invalid id" });
   }
 
-  const dependencies = await prisma.gpsDevice.findUnique({
+  const gpsDevice = await prisma.gpsDevice.findUnique({
     where: { id: gpsDeviceId },
     select: {
+      isActive: true,
       _count: {
         select: {
-          assignments: true,
           sourceStates: true,
           ingestLogs: true,
           autoStartedTrips: true,
@@ -749,35 +745,57 @@ export async function deleteGpsDevice(req: Request, res: Response) {
     },
   });
 
-  if (!dependencies) {
+  if (!gpsDevice) {
     return res.status(404).json({ message: "GPS device not found" });
   }
 
-  const { assignments, sourceStates, ingestLogs, autoStartedTrips } =
-    dependencies._count;
+  // Block if the device is tied to a trip that is still running.
+  const runningTrips = await prisma.trip.count({
+    where: { startedByGpsDeviceId: gpsDeviceId, status: "RUNNING" },
+  });
 
-  if (
-    assignments > 0 ||
-    sourceStates > 0 ||
-    ingestLogs > 0 ||
-    autoStartedTrips > 0
-  ) {
+  if (runningTrips > 0) {
     return res.status(409).json({
-      message: "GPS device cannot be deleted because it is in use",
-      dependencies: {
-        assignments,
-        sourceStates,
-        ingestLogs,
-        autoStartedTrips,
-      },
+      message:
+        "This GPS device started a trip that is still in progress. End the trip before removing the device.",
+      code: "GPS_DEVICE_HAS_RUNNING_TRIP",
     });
   }
 
-  await prisma.gpsDevice.delete({
-    where: { id: gpsDeviceId },
-  });
+  // Tracking history (ingest logs, tracking states, started trips) is worth
+  // preserving — archive the device instead of hard-deleting it. Bus
+  // assignments cascade away cleanly, so they do not count as history.
+  const hasHistory =
+    gpsDevice._count.sourceStates > 0 ||
+    gpsDevice._count.ingestLogs > 0 ||
+    gpsDevice._count.autoStartedTrips > 0;
 
-  return res.json({ message: "GPS device deleted successfully" });
+  if (hasHistory) {
+    if (!gpsDevice.isActive) {
+      return res.json({
+        message: "GPS device is already archived.",
+        archived: true,
+      });
+    }
+
+    await prisma.gpsDevice.update({
+      where: { id: gpsDeviceId },
+      data: { isActive: false },
+    });
+
+    return res.json({
+      message:
+        "This GPS device has tracking history, so it was archived instead of deleted. It will no longer accept new assignments.",
+      archived: true,
+    });
+  }
+
+  await prisma.gpsDevice.delete({ where: { id: gpsDeviceId } });
+
+  return res.json({
+    message: "GPS device deleted successfully.",
+    archived: false,
+  });
 }
 
 export async function getBusGpsDeviceAssignment(req: Request, res: Response) {
