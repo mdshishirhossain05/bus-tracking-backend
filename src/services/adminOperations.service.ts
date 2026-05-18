@@ -5,6 +5,55 @@ import { AppError } from "../utils/appError.js";
 import { finalizeTripService } from "./tripLifecycle.service.js";
 import { writeAuditLogSafe } from "./audit.service.js";
 import { logSystemAlert } from "./tripEvent.service.js";
+import { getIO } from "../sockets/io.js";
+import { getTripRoom } from "../sockets/events.js";
+
+/**
+ * Best-effort realtime presence snapshot from the Socket.IO server:
+ * how many distinct users are connected and how many sockets are
+ * currently inside each `trip:{id}` room (i.e. watching a live trip).
+ */
+async function getPresenceSnapshot() {
+  const empty = {
+    onlineUsers: 0,
+    totalConnections: 0,
+    liveWatchers: 0,
+    tripRoomCounts: new Map<string, number>(),
+  };
+
+  try {
+    const sockets = await getIO().fetchSockets();
+    const onlineUserIds = new Set<string>();
+    const tripRoomCounts = new Map<string, number>();
+    let liveWatchers = 0;
+
+    for (const socket of sockets) {
+      const userId = socket.data?.auth?.userId;
+      if (typeof userId === "string" && userId.length > 0) {
+        onlineUserIds.add(userId);
+      }
+
+      let watchingTrip = false;
+      for (const room of socket.rooms) {
+        if (room.startsWith("trip:")) {
+          tripRoomCounts.set(room, (tripRoomCounts.get(room) ?? 0) + 1);
+          watchingTrip = true;
+        }
+      }
+      if (watchingTrip) liveWatchers += 1;
+    }
+
+    return {
+      onlineUsers: onlineUserIds.size,
+      totalConnections: sockets.length,
+      liveWatchers,
+      tripRoomCounts,
+    };
+  } catch {
+    // Socket server not initialized yet — presence is non-critical.
+    return empty;
+  }
+}
 
 function toNumber(value: unknown) {
   if (value == null) return null;
@@ -307,6 +356,8 @@ export async function getAdminOperationsOverviewService() {
     orderBy: [{ status: "desc" }, { startTime: "desc" }, { createdAt: "desc" }],
   });
 
+  const presence = await getPresenceSnapshot();
+
   const mappedTrips = await Promise.all(
     trips.map(async (trip) => {
       const realtime =
@@ -403,6 +454,7 @@ export async function getAdminOperationsOverviewService() {
         selectedSource,
         availableSources,
         isStale: trip.isStale,
+        watcherCount: presence.tripRoomCounts.get(getTripRoom(trip.id)) ?? 0,
       };
     }),
   );
@@ -438,6 +490,8 @@ export async function getAdminOperationsOverviewService() {
       gpsSelectedTrips: gpsSelectedTrips.length,
       driverSelectedTrips: driverSelectedTrips.length,
       averageEtaMinutes,
+      onlineUsers: presence.onlineUsers,
+      liveWatchers: presence.liveWatchers,
     },
     trips: mappedTrips,
   };
