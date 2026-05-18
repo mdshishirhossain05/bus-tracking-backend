@@ -120,3 +120,101 @@ export async function getDelayReportService(query: DelayReportQuery) {
     },
   };
 }
+
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+export async function getAnalyticsOverviewService() {
+  const now = new Date();
+  const last7 = new Date(now.getTime() - 7 * DAY_MS);
+  const last30 = new Date(now.getTime() - 30 * DAY_MS);
+  const last14 = new Date(now.getTime() - 14 * DAY_MS);
+
+  const [
+    statusGroups,
+    totalTrips,
+    createdLast7,
+    createdLast30,
+    topRouteGroups,
+    recentTrips,
+    arrivalTotal,
+    arrivalNoSchedule,
+    arrivalLate,
+  ] = await Promise.all([
+    prisma.trip.groupBy({ by: ["status"], _count: { _all: true } }),
+    prisma.trip.count(),
+    prisma.trip.count({ where: { createdAt: { gte: last7 } } }),
+    prisma.trip.count({ where: { createdAt: { gte: last30 } } }),
+    prisma.trip.groupBy({
+      by: ["routeId"],
+      _count: { _all: true },
+      orderBy: { _count: { routeId: "desc" } },
+      take: 6,
+    }),
+    prisma.trip.findMany({
+      where: { createdAt: { gte: last14 } },
+      select: { createdAt: true },
+    }),
+    prisma.stopArrival.count(),
+    prisma.stopArrival.count({ where: { scheduledTime: null } }),
+    prisma.stopArrival.count({
+      where: { scheduledTime: { not: null }, delayMinutes: { gt: 2 } },
+    }),
+  ]);
+
+  const statusCount = (status: string) =>
+    statusGroups.find((group) => group.status === status)?._count._all ?? 0;
+
+  const routeIds = topRouteGroups.map((group) => group.routeId);
+  const routes = routeIds.length
+    ? await prisma.route.findMany({
+        where: { id: { in: routeIds } },
+        select: { id: true, routeName: true },
+      })
+    : [];
+  const routeNameById = new Map(routes.map((r) => [r.id, r.routeName]));
+
+  // Bucket the last 14 days of trip creations into a daily series.
+  const buckets = new Map<string, number>();
+  for (let offset = 13; offset >= 0; offset -= 1) {
+    const key = new Date(now.getTime() - offset * DAY_MS)
+      .toISOString()
+      .slice(0, 10);
+    buckets.set(key, 0);
+  }
+  for (const trip of recentTrips) {
+    const key = trip.createdAt.toISOString().slice(0, 10);
+    if (buckets.has(key)) buckets.set(key, (buckets.get(key) ?? 0) + 1);
+  }
+
+  const scheduledArrivals = Math.max(0, arrivalTotal - arrivalNoSchedule);
+  const onTimeArrivals = Math.max(0, scheduledArrivals - arrivalLate);
+
+  return {
+    trips: {
+      total: totalTrips,
+      running: statusCount("RUNNING"),
+      planned: statusCount("PLANNED"),
+      ended: statusCount("ENDED"),
+      createdLast7Days: createdLast7,
+      createdLast30Days: createdLast30,
+    },
+    arrivals: {
+      total: arrivalTotal,
+      onTime: onTimeArrivals,
+      late: arrivalLate,
+      onTimePercentage:
+        scheduledArrivals > 0
+          ? Math.round((onTimeArrivals / scheduledArrivals) * 1000) / 10
+          : 0,
+    },
+    topRoutes: topRouteGroups.map((group) => ({
+      routeId: group.routeId,
+      routeName: routeNameById.get(group.routeId) ?? "Unknown route",
+      tripCount: group._count._all,
+    })),
+    dailyTrips: [...buckets.entries()].map(([date, count]) => ({
+      date,
+      count,
+    })),
+  };
+}
