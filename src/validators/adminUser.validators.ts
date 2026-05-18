@@ -15,6 +15,8 @@ export const listAdminUsersQuerySchema = z.object({
     .optional(),
   approvalStatus: approvalEnum.optional(),
   registrationSource: sourceEnum.optional(),
+  academicDepartment: z.string().trim().max(120).optional(),
+  academicBatch: z.string().trim().max(120).optional(),
 });
 
 export const createAdminUserSchema = z.object({
