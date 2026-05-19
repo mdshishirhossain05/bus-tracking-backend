@@ -7,6 +7,7 @@ import {
 } from "../../validators/stop.validators.js";
 import { uuidParamSchema } from "../../validators/params.validators.js";
 import { cleanUndefined } from "../../utils/clean.js";
+import { writeRequestAudit } from "../../utils/auditRequest.js";
 
 function setNoStore(res: Response) {
   res.setHeader(
@@ -120,6 +121,13 @@ export async function createStop(req: Request, res: Response) {
           },
         },
       },
+    });
+
+    await writeRequestAudit(req, {
+      action: "ADMIN_CREATE_STOP",
+      entityType: "Stop",
+      entityId: stop.id,
+      metaJson: { stopName: stop.stopName },
     });
 
     return res.status(201).json({ stop: mapStop(stop) });
@@ -268,6 +276,12 @@ export async function updateStop(req: Request, res: Response) {
       },
     });
 
+    await writeRequestAudit(req, {
+      action: "ADMIN_UPDATE_STOP",
+      entityType: "Stop",
+      entityId: stop.id,
+    });
+
     return res.json({ stop: mapStop(stop) });
   } catch (error) {
     if (isUniqueConstraintError(error, "stopCode")) {
@@ -350,6 +364,12 @@ export async function deleteStop(req: Request, res: Response) {
       stopId: id,
     });
   }
+
+  await writeRequestAudit(req, {
+    action: "ADMIN_DELETE_STOP",
+    entityType: "Stop",
+    entityId: id,
+  });
 
   return res.json({
     message: "Stop deleted successfully",

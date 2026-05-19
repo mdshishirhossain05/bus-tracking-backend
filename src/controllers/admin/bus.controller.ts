@@ -8,6 +8,7 @@ import {
 } from "../../validators/bus.validators.js";
 import { uuidParamSchema } from "../../validators/params.validators.js";
 import { cleanUndefined } from "../../utils/clean.js";
+import { writeRequestAudit } from "../../utils/auditRequest.js";
 import {
   getTraccarBaseUrl,
   getTraccarDeviceStatus,
@@ -221,6 +222,12 @@ export async function createBus(req: Request, res: Response) {
 
   try {
     const bus = await prisma.bus.create({ data });
+    await writeRequestAudit(req, {
+      action: "ADMIN_CREATE_BUS",
+      entityType: "Bus",
+      entityId: bus.id,
+      metaJson: { busCode: bus.busCode },
+    });
     return res.status(201).json({ bus });
   } catch (error) {
     const conflict = handlePrismaConflict(error, "bus");
@@ -289,6 +296,13 @@ export async function updateBus(req: Request, res: Response) {
       data,
     });
 
+    await writeRequestAudit(req, {
+      action: "ADMIN_UPDATE_BUS",
+      entityType: "Bus",
+      entityId: bus.id,
+      metaJson: data as Record<string, unknown>,
+    });
+
     return res.json({ bus });
   } catch (error) {
     const conflict = handlePrismaConflict(error, "bus");
@@ -354,6 +368,12 @@ export async function deleteBus(req: Request, res: Response) {
 
     await prisma.bus.update({ where: { id }, data: { isActive: false } });
 
+    await writeRequestAudit(req, {
+      action: "ADMIN_ARCHIVE_BUS",
+      entityType: "Bus",
+      entityId: id,
+    });
+
     return res.json({
       message:
         "This bus has trip history, so it was archived instead of deleted. It will no longer be available for new trips.",
@@ -362,6 +382,12 @@ export async function deleteBus(req: Request, res: Response) {
   }
 
   await prisma.bus.delete({ where: { id } });
+
+  await writeRequestAudit(req, {
+    action: "ADMIN_DELETE_BUS",
+    entityType: "Bus",
+    entityId: id,
+  });
 
   return res.json({ message: "Bus deleted successfully.", archived: false });
 }
@@ -406,6 +432,13 @@ export async function createGpsDevice(req: Request, res: Response) {
   try {
     const device = await prisma.gpsDevice.create({ data });
     const syncedDevice = await syncGpsDeviceToTraccarBestEffort(device.id);
+
+    await writeRequestAudit(req, {
+      action: "ADMIN_CREATE_GPS_DEVICE",
+      entityType: "GpsDevice",
+      entityId: device.id,
+      metaJson: { deviceCode: device.deviceCode },
+    });
 
     return res.status(201).json({
       gpsDevice: syncedDevice ?? sanitizeGpsDevice(device),
@@ -555,6 +588,12 @@ export async function updateGpsDevice(req: Request, res: Response) {
     });
 
     const syncedDevice = await syncGpsDeviceToTraccarBestEffort(device.id);
+
+    await writeRequestAudit(req, {
+      action: "ADMIN_UPDATE_GPS_DEVICE",
+      entityType: "GpsDevice",
+      entityId: device.id,
+    });
 
     return res.json({
       gpsDevice: syncedDevice ?? sanitizeGpsDevice(device),
@@ -783,6 +822,12 @@ export async function deleteGpsDevice(req: Request, res: Response) {
       data: { isActive: false },
     });
 
+    await writeRequestAudit(req, {
+      action: "ADMIN_ARCHIVE_GPS_DEVICE",
+      entityType: "GpsDevice",
+      entityId: gpsDeviceId,
+    });
+
     return res.json({
       message:
         "This GPS device has tracking history, so it was archived instead of deleted. It will no longer accept new assignments.",
@@ -791,6 +836,12 @@ export async function deleteGpsDevice(req: Request, res: Response) {
   }
 
   await prisma.gpsDevice.delete({ where: { id: gpsDeviceId } });
+
+  await writeRequestAudit(req, {
+    action: "ADMIN_DELETE_GPS_DEVICE",
+    entityType: "GpsDevice",
+    entityId: gpsDeviceId,
+  });
 
   return res.json({
     message: "GPS device deleted successfully.",

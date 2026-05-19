@@ -7,6 +7,7 @@ import {
 } from "../../validators/route.validators.js";
 import { uuidParamSchema } from "../../validators/params.validators.js";
 import { cleanUndefined } from "../../utils/clean.js";
+import { writeRequestAudit } from "../../utils/auditRequest.js";
 
 export async function createRoute(req: Request, res: Response) {
   const parsed = createRouteSchema.safeParse(req.body);
@@ -21,6 +22,12 @@ export async function createRoute(req: Request, res: Response) {
 
   try {
     const route = await prisma.route.create({ data });
+    await writeRequestAudit(req, {
+      action: "ADMIN_CREATE_ROUTE",
+      entityType: "Route",
+      entityId: route.id,
+      metaJson: { routeName: route.routeName },
+    });
     return res.status(201).json({ route });
   } catch (error) {
     if (
@@ -64,6 +71,13 @@ export async function updateRoute(req: Request, res: Response) {
     const route = await prisma.route.update({
       where: { id: idParsed.data },
       data,
+    });
+
+    await writeRequestAudit(req, {
+      action: "ADMIN_UPDATE_ROUTE",
+      entityType: "Route",
+      entityId: route.id,
+      metaJson: data as Record<string, unknown>,
     });
 
     return res.json({ route });
@@ -137,6 +151,12 @@ export async function deleteRoute(req: Request, res: Response) {
 
     await prisma.route.update({ where: { id }, data: { isActive: false } });
 
+    await writeRequestAudit(req, {
+      action: "ADMIN_ARCHIVE_ROUTE",
+      entityType: "Route",
+      entityId: id,
+    });
+
     return res.json({
       message:
         "This route has trip history, so it was archived instead of deleted. It will no longer be available for new trips.",
@@ -145,6 +165,12 @@ export async function deleteRoute(req: Request, res: Response) {
   }
 
   await prisma.route.delete({ where: { id } });
+
+  await writeRequestAudit(req, {
+    action: "ADMIN_DELETE_ROUTE",
+    entityType: "Route",
+    entityId: id,
+  });
 
   return res.json({ message: "Route deleted successfully.", archived: false });
 }
