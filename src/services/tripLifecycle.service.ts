@@ -78,6 +78,7 @@ type MaybeAutoEndResult = {
     | "NO_ROUTE_STOPS"
     | "PENDING_FINAL_STOP_STATIONARY"
     | "NO_AUTO_END_CONDITION"
+    | "AUTO_END_DISABLED"
     | TripEndReason;
   tripId: string | null;
 };
@@ -309,6 +310,7 @@ export async function maybeAutoEndTripService(
       status: true,
       activationMode: true,
       startTime: true,
+      autoEndDisabled: true,
     },
   });
 
@@ -325,6 +327,17 @@ export async function maybeAutoEndTripService(
     return {
       ended: false,
       reason: "TRIP_NOT_RUNNING",
+      tripId: trip.id,
+    };
+  }
+
+  // An admin can suspend graceful auto-end for a specific trip (e.g. a long
+  // layover at the final stop). The stale-timeout safety net still applies.
+  if (trip.autoEndDisabled) {
+    await clearAutoEndRedisState(trip.id);
+    return {
+      ended: false,
+      reason: "AUTO_END_DISABLED",
       tripId: trip.id,
     };
   }

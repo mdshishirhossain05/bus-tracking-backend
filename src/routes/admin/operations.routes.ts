@@ -10,6 +10,7 @@ import {
   forceEndAdminTrip,
   forceRecoverAdminTrip,
   startAdminTrip,
+  setAdminTripAutoEnd,
 } from "../../controllers/admin/operations.controller.js";
 
 export const adminOperationsRouter = Router();
@@ -85,6 +86,27 @@ adminOperationsRouter.post(
   requireAuth,
   requireRole("ADMIN"),
   asyncHandler(startAdminTrip),
+);
+
+/**
+ * @openapi
+ * /admin/operations/trips/{tripId}/auto-end:
+ *   post:
+ *     summary: Enable or disable auto-end for a running trip
+ *     tags:
+ *       - Admin Operations
+ *     security:
+ *       - bearerAuth: []
+ *       - cookieAuth: []
+ *     responses:
+ *       200:
+ *         description: Trip auto-end setting updated
+ */
+adminOperationsRouter.post(
+  "/admin/operations/trips/:tripId/auto-end",
+  requireAuth,
+  requireRole("ADMIN"),
+  asyncHandler(setAdminTripAutoEnd),
 );
 
 /**

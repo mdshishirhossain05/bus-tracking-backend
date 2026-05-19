@@ -13,6 +13,7 @@ import {
   forceEndAdminTripService,
   forceRecoverAdminTripService,
   startAdminTripService,
+  setTripAutoEndService,
 } from "../../services/adminOperations.service.js";
 
 export async function getAdminOperationsOverview(
@@ -51,6 +52,45 @@ export async function startAdminTrip(req: AuthRequest, res: Response) {
 
   return sendSuccess(res, {
     message: "Trip started successfully",
+    data,
+  });
+}
+
+export async function setAdminTripAutoEnd(req: AuthRequest, res: Response) {
+  const parsedTripId = uuidParamSchema.safeParse(req.params.tripId);
+
+  if (!parsedTripId.success) {
+    throw new AppError({
+      statusCode: 400,
+      code: "INVALID_TRIP_ID",
+      message: "Invalid tripId",
+    });
+  }
+
+  if (typeof req.body?.disabled !== "boolean") {
+    throw new AppError({
+      statusCode: 400,
+      code: "INVALID_BODY",
+      message: "`disabled` must be a boolean",
+    });
+  }
+
+  const data = await setTripAutoEndService({
+    tripId: parsedTripId.data,
+    disabled: req.body.disabled,
+    adminUserId: req.user?.id ?? null,
+    adminRole: req.user?.role ?? null,
+    route: req.originalUrl,
+    method: req.method,
+    requestId: req.requestId ?? null,
+    ip: getRequestIp(req),
+    userAgent: req.headers["user-agent"]?.toString() ?? null,
+  });
+
+  return sendSuccess(res, {
+    message: data.autoEndDisabled
+      ? "Auto-end disabled for this trip"
+      : "Auto-end re-enabled for this trip",
     data,
   });
 }
