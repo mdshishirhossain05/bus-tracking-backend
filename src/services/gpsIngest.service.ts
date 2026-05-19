@@ -56,6 +56,88 @@ function sanitizeAccuracy(value: number | null) {
   return value;
 }
 
+/** A bus cannot plausibly move faster than this — used for outlier rejection. */
+const GPS_OUTLIER_MAX_KMH = 160;
+
+function haversineMetersLocal(
+  lat1: number,
+  lng1: number,
+  lat2: number,
+  lng2: number,
+) {
+  const earthRadius = 6_371_000;
+  const toRad = (deg: number) => (deg * Math.PI) / 180;
+  const dLat = toRad(lat2 - lat1);
+  const dLng = toRad(lng2 - lng1);
+  const a =
+    Math.sin(dLat / 2) ** 2 +
+    Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLng / 2) ** 2;
+  return earthRadius * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+}
+
+/**
+ * Accuracy-weighted low-pass filter for the stored/broadcast bus position.
+ * Blends the new GPS fix with the previous smoothed position — trusting the
+ * raw fix more when GPS accuracy is good — and heavily distrusts physically
+ * impossible jumps. The raw fix is still recorded verbatim in DeviceIngestLog.
+ */
+function smoothGpsPosition(params: {
+  rawLat: number;
+  rawLng: number;
+  accuracyM: number | null;
+  recordedAt: Date;
+  previous: { lat: number; lng: number; recordedAt: Date | null } | null;
+}): { lat: number; lng: number } {
+  const { rawLat, rawLng, accuracyM, recordedAt, previous } = params;
+
+  if (!previous) {
+    return { lat: rawLat, lng: rawLng };
+  }
+
+  const distanceM = haversineMetersLocal(
+    previous.lat,
+    previous.lng,
+    rawLat,
+    rawLng,
+  );
+
+  // Movement within typical GPS noise — hold position so a parked bus does
+  // not visibly wobble.
+  if (distanceM < 4) {
+    return { lat: previous.lat, lng: previous.lng };
+  }
+
+  const elapsedSeconds = previous.recordedAt
+    ? Math.max(
+        1,
+        (recordedAt.getTime() - previous.recordedAt.getTime()) / 1000,
+      )
+    : 1;
+  const impliedKmh = distanceM / 1000 / (elapsedSeconds / 3600);
+
+  let alpha: number;
+  if (impliedKmh > GPS_OUTLIER_MAX_KMH) {
+    // Implausible jump — distrust the spike, but still drift slightly toward
+    // it so a genuine long-gap move is not permanently stuck.
+    alpha = 0.15;
+  } else if (accuracyM == null) {
+    alpha = 0.6;
+  } else if (accuracyM <= 15) {
+    alpha = 0.85;
+  } else if (accuracyM <= 40) {
+    alpha = 0.6;
+  } else if (accuracyM <= 80) {
+    alpha = 0.4;
+  } else {
+    alpha = 0.25;
+  }
+
+  return {
+    lat: alpha * rawLat + (1 - alpha) * previous.lat,
+    lng: alpha * rawLng + (1 - alpha) * previous.lng,
+  };
+}
+
 function deriveSourceStatus(params: {
   accuracyM: number | null;
   recordedAt: Date;
@@ -519,6 +601,24 @@ export async function ingestGpsDeviceLocationService(input: GpsIngestInput) {
 
   const now = new Date();
 
+  // Smoothed position for the stored/broadcast tracking state. DeviceIngestLog
+  // keeps the raw fix; auto-start keeps using raw input independently.
+  const smoothedPosition = smoothGpsPosition({
+    rawLat: input.lat,
+    rawLng: input.lng,
+    accuracyM,
+    recordedAt: input.recordedAt,
+    previous:
+      previousGpsSourceState?.latitude != null &&
+      previousGpsSourceState.longitude != null
+        ? {
+            lat: Number(previousGpsSourceState.latitude),
+            lng: Number(previousGpsSourceState.longitude),
+            recordedAt: previousGpsSourceState.recordedAt ?? null,
+          }
+        : null,
+  });
+
   await prisma.$transaction(async (tx) => {
     await tx.deviceIngestLog.create({
       data: buildDeviceIngestLogCreateData({
@@ -546,8 +646,8 @@ export async function ingestGpsDeviceLocationService(input: GpsIngestInput) {
         lastRecordedAt: input.recordedAt,
         lastIp: input.requestIp,
         lastStatus: sourceStatus,
-        lastLat: new Prisma.Decimal(input.lat),
-        lastLng: new Prisma.Decimal(input.lng),
+        lastLat: new Prisma.Decimal(smoothedPosition.lat),
+        lastLng: new Prisma.Decimal(smoothedPosition.lng),
         lastSpeedKmh: toDecimal(speedKmh),
         lastHeading: heading,
         lastAccuracyM: toDecimal(accuracyM),
@@ -567,8 +667,8 @@ export async function ingestGpsDeviceLocationService(input: GpsIngestInput) {
         sourceLabel,
         gpsDeviceId: input.gpsDeviceId,
         driverId: runningTripBeforeAutoStart?.driverId ?? null,
-        latitude: new Prisma.Decimal(input.lat),
-        longitude: new Prisma.Decimal(input.lng),
+        latitude: new Prisma.Decimal(smoothedPosition.lat),
+        longitude: new Prisma.Decimal(smoothedPosition.lng),
         speedKmh: toDecimal(speedKmh),
         rawSpeedKmh: toDecimal(speedKmh),
         averageSpeedKmh: null,
@@ -589,8 +689,8 @@ export async function ingestGpsDeviceLocationService(input: GpsIngestInput) {
         sourceLabel,
         gpsDeviceId: input.gpsDeviceId,
         driverId: runningTripBeforeAutoStart?.driverId ?? null,
-        latitude: new Prisma.Decimal(input.lat),
-        longitude: new Prisma.Decimal(input.lng),
+        latitude: new Prisma.Decimal(smoothedPosition.lat),
+        longitude: new Prisma.Decimal(smoothedPosition.lng),
         speedKmh: toDecimal(speedKmh),
         rawSpeedKmh: toDecimal(speedKmh),
         averageSpeedKmh: null,
