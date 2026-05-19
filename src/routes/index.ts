@@ -22,6 +22,7 @@ import { gpsIngestRouter } from "./gps.ingest.routes.js";
 import { passengerTrackingRouter } from "./passenger.tracking.routes.js";
 import { passengerTripsRouter } from "./passenger.trips.routes.js";
 import { favoriteRouter } from "./favorite.routes.js";
+import { notificationRouter } from "./notification.routes.js";
 import { routePresentationRouter } from "./route.presentation.routes.js";
 
 export function registerRoutes(app: Express) {
@@ -70,6 +71,7 @@ export function registerRoutes(app: Express) {
   app.use(apiBase, passengerTrackingRouter);
   app.use(apiBase, passengerTripsRouter);
   app.use(apiBase, favoriteRouter);
+  app.use(apiBase, notificationRouter);
 
   /**
    * Shared route presentation
