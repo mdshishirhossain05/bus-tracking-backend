@@ -43,7 +43,7 @@ function roundNumber(value: number, digits = 1) {
 
 function sanitizeSpeedKmh(value: number | null) {
   if (value == null || !Number.isFinite(value) || value < 0) return null;
-  return clamp(value, 0, 300);
+  return clamp(value, 0, env.GPS_INGEST_MAX_SPEED_KMH);
 }
 
 function sanitizeHeading(value: number | null) {
