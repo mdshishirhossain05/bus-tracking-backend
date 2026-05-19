@@ -9,6 +9,7 @@ import {
   getAdminTripOperationsDetail,
   forceEndAdminTrip,
   forceRecoverAdminTrip,
+  startAdminTrip,
 } from "../../controllers/admin/operations.controller.js";
 
 export const adminOperationsRouter = Router();
@@ -63,6 +64,27 @@ adminOperationsRouter.get(
   requireAuth,
   requireRole("ADMIN"),
   asyncHandler(getAdminActiveTrips),
+);
+
+/**
+ * @openapi
+ * /admin/operations/trips/start:
+ *   post:
+ *     summary: Manually start a trip from a service schedule
+ *     tags:
+ *       - Admin Operations
+ *     security:
+ *       - bearerAuth: []
+ *       - cookieAuth: []
+ *     responses:
+ *       200:
+ *         description: Trip started successfully
+ */
+adminOperationsRouter.post(
+  "/admin/operations/trips/start",
+  requireAuth,
+  requireRole("ADMIN"),
+  asyncHandler(startAdminTrip),
 );
 
 /**
