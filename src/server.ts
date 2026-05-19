@@ -9,7 +9,7 @@ import { prisma } from "./config/prisma.js";
 import { redis, connectRedis } from "./config/redis.js";
 import { setIO } from "./sockets/io.js";
 import { authenticateSocket } from "./sockets/socketAuth.js";
-import { SOCKET_EVENTS, getTripRoom } from "./sockets/events.js";
+import { SOCKET_EVENTS, getTripRoom, getUserRoom } from "./sockets/events.js";
 import {
   startTripStaleJob,
   stopTripStaleJob,
@@ -206,6 +206,13 @@ async function bootstrap() {
       message: "Socket connected",
       socketAdapterReady,
     });
+
+    // Join a per-user room so user-targeted events (e.g. notifications)
+    // can be delivered without knowing the socket id.
+    const authUserId = socket.data.auth?.userId;
+    if (authUserId) {
+      socket.join(getUserRoom(authUserId));
+    }
 
     socket.on(SOCKET_EVENTS.JOIN_TRIP, async ({ tripId }) => {
       const auth = socket.data.auth;

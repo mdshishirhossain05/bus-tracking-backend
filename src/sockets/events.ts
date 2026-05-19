@@ -13,8 +13,14 @@ export const SOCKET_EVENTS = {
   STOP_ARRIVAL: "trip:stop_arrival",
   TRIP_STARTED: "trip:started",
   TRIP_ENDED: "trip:ended",
+
+  NOTIFICATION: "notification",
 } as const;
 
 export function getTripRoom(tripId: string) {
   return `trip:${tripId}`;
+}
+
+export function getUserRoom(userId: string) {
+  return `user:${userId}`;
 }

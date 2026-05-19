@@ -1,4 +1,6 @@
 import { prisma } from "../config/prisma.js";
+import { getIO } from "../sockets/io.js";
+import { SOCKET_EVENTS, getUserRoom } from "../sockets/events.js";
 
 const MAX_LIST = 30;
 
@@ -86,4 +88,17 @@ export async function createArrivalNotificationsService(input: {
       link: "/passenger/live",
     })),
   });
+
+  // Nudge any connected recipients so their notification panel updates live.
+  try {
+    const io = getIO();
+    for (const favorite of favorites) {
+      io.to(getUserRoom(favorite.userId)).emit(SOCKET_EVENTS.NOTIFICATION, {
+        type: "STOP_ARRIVAL",
+      });
+    }
+  } catch {
+    // Socket server not ready — persisted notifications are still delivered
+    // on the next fetch.
+  }
 }
