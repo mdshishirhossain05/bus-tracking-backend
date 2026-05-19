@@ -7,6 +7,131 @@ import { writeAuditLogSafe } from "./audit.service.js";
 import { logSystemAlert } from "./tripEvent.service.js";
 import { getIO } from "../sockets/io.js";
 import { getTripRoom } from "../sockets/events.js";
+import { createTripFromServiceSchedule } from "./trip.service.js";
+import {
+  acquireTripStartLock,
+  releaseTripStartLock,
+} from "./tripLock.service.js";
+
+/**
+ * Manually starts a trip from a service schedule on behalf of an admin —
+ * the operational counterpart to force-end. Used when neither the driver
+ * nor GPS auto-start has begun a scheduled trip.
+ */
+export async function startAdminTripService(input: {
+  serviceScheduleId: string;
+  adminUserId: string | null;
+  adminRole: string | null;
+  route: string | null;
+  method: string | null;
+  requestId: string | null;
+  ip: string | null;
+  userAgent: string | null;
+}) {
+  const schedule = await prisma.serviceSchedule.findUnique({
+    where: { id: input.serviceScheduleId },
+    include: {
+      route: { select: { id: true, isActive: true, routeName: true } },
+      bus: { select: { id: true, isActive: true, busCode: true } },
+      driver: { select: { id: true, isActive: true, fullName: true } },
+    },
+  });
+
+  if (!schedule) {
+    throw new AppError({
+      statusCode: 404,
+      code: "SERVICE_SCHEDULE_NOT_FOUND",
+      message: "Service schedule not found",
+    });
+  }
+
+  if (
+    !schedule.isActive ||
+    !schedule.route.isActive ||
+    !schedule.bus.isActive ||
+    !schedule.driver.isActive
+  ) {
+    throw new AppError({
+      statusCode: 409,
+      code: "SCHEDULE_NOT_STARTABLE",
+      message:
+        "This schedule cannot be started because the schedule, route, bus or driver is inactive.",
+    });
+  }
+
+  const lockResult = await acquireTripStartLock({
+    driverId: schedule.driverId,
+    busId: schedule.busId,
+  });
+
+  if (!lockResult.ok) {
+    throw new AppError({
+      statusCode: 409,
+      code: "TRIP_START_IN_PROGRESS",
+      message: "A trip start for this bus or driver is already in progress.",
+    });
+  }
+
+  try {
+    const runningForBus = await prisma.trip.findFirst({
+      where: { busId: schedule.busId, status: "RUNNING" },
+      select: { id: true },
+    });
+    if (runningForBus) {
+      throw new AppError({
+        statusCode: 409,
+        code: "BUS_ALREADY_IN_RUNNING_TRIP",
+        message: "This bus is already on a running trip.",
+      });
+    }
+
+    const runningForDriver = await prisma.trip.findFirst({
+      where: { driverId: schedule.driverId, status: "RUNNING" },
+      select: { id: true },
+    });
+    if (runningForDriver) {
+      throw new AppError({
+        statusCode: 409,
+        code: "DRIVER_ALREADY_IN_RUNNING_TRIP",
+        message: "This driver is already on a running trip.",
+      });
+    }
+
+    const created = await createTripFromServiceSchedule({
+      driverId: schedule.driverId,
+      routeId: schedule.routeId,
+      busId: schedule.busId,
+      serviceScheduleId: schedule.id,
+      startedAt: new Date(),
+      activationMode: "MANUAL_ADMIN",
+      startedByGpsDeviceId: null,
+    });
+
+    await writeAuditLogSafe({
+      actorUserId: input.adminUserId,
+      actorRole: input.adminRole,
+      action: "ADMIN_START_TRIP",
+      entityType: "Trip",
+      entityId: created.trip.id,
+      route: input.route,
+      method: input.method,
+      requestId: input.requestId,
+      ip: input.ip,
+      userAgent: input.userAgent,
+      metaJson: {
+        serviceScheduleId: schedule.id,
+        routeName: schedule.route.routeName,
+        busCode: schedule.bus.busCode,
+        driverName: schedule.driver.fullName,
+        startMode: "MANUAL_ADMIN",
+      },
+    });
+
+    return { trip: created.mapped };
+  } finally {
+    await releaseTripStartLock(lockResult.lock);
+  }
+}
 
 /**
  * Best-effort realtime presence snapshot from the Socket.IO server:

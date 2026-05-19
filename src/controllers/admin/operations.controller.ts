@@ -12,6 +12,7 @@ import {
   getAdminTripOperationsDetailService,
   forceEndAdminTripService,
   forceRecoverAdminTripService,
+  startAdminTripService,
 } from "../../services/adminOperations.service.js";
 
 export async function getAdminOperationsOverview(
@@ -22,6 +23,34 @@ export async function getAdminOperationsOverview(
 
   return sendSuccess(res, {
     message: "Admin operations overview fetched successfully",
+    data,
+  });
+}
+
+export async function startAdminTrip(req: AuthRequest, res: Response) {
+  const parsed = uuidParamSchema.safeParse(req.body?.serviceScheduleId);
+
+  if (!parsed.success) {
+    throw new AppError({
+      statusCode: 400,
+      code: "INVALID_SERVICE_SCHEDULE_ID",
+      message: "A valid serviceScheduleId is required",
+    });
+  }
+
+  const data = await startAdminTripService({
+    serviceScheduleId: parsed.data,
+    adminUserId: req.user?.id ?? null,
+    adminRole: req.user?.role ?? null,
+    route: req.originalUrl,
+    method: req.method,
+    requestId: req.requestId ?? null,
+    ip: getRequestIp(req),
+    userAgent: req.headers["user-agent"]?.toString() ?? null,
+  });
+
+  return sendSuccess(res, {
+    message: "Trip started successfully",
     data,
   });
 }
