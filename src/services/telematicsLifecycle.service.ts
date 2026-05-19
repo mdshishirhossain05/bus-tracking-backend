@@ -177,13 +177,63 @@ async function getRouteOrigin(routeId: string) {
   };
 }
 
-function isMovementConfirmed(params: {
+type MovementSample = {
+  lat: number;
+  lng: number;
   speedKmh: number | null;
+  recordedAt: Date;
+};
+
+/** Recent accepted GPS samples for a device, oldest-first. */
+async function getRecentMovementSamples(
+  gpsDeviceId: string,
+  before: Date,
+): Promise<MovementSample[]> {
+  const since = new Date(before.getTime() - 5 * 60 * 1000);
+
+  const rows = await prisma.deviceIngestLog.findMany({
+    where: {
+      gpsDeviceId,
+      isAccepted: true,
+      lat: { not: null },
+      lng: { not: null },
+      recordedAt: { gte: since, lte: before },
+    },
+    orderBy: { recordedAt: "asc" },
+    take: 12,
+    select: { lat: true, lng: true, speedKmh: true, recordedAt: true },
+  });
+
+  return rows.flatMap((row) => {
+    if (row.lat == null || row.lng == null || !row.recordedAt) return [];
+    return [
+      {
+        lat: Number(row.lat),
+        lng: Number(row.lng),
+        speedKmh: row.speedKmh != null ? Number(row.speedKmh) : null,
+        recordedAt: row.recordedAt,
+      },
+    ];
+  });
+}
+
+/**
+ * Confirms genuine vehicle movement from a short rolling window of recent
+ * GPS samples rather than a single previous-vs-current comparison.
+ *
+ * Net displacement across the window is resistant to GPS jitter (which
+ * oscillates around a point so its net displacement stays near zero), and
+ * sustained speed must appear in at least two samples — so a one-off speed
+ * spike cannot falsely trigger auto-start. At least two samples of
+ * corroborating evidence are required overall.
+ */
+function isMovementConfirmed(params: {
   currentLat: number;
   currentLng: number;
+  currentSpeedKmh: number | null;
   recordedAt: Date;
-  previousGpsState: PreviousGpsState;
-}) {
+  recentSamples: MovementSample[];
+}): boolean {
   const minSpeedKmh = Number(env.TELEMATICS_AUTO_START_MIN_SPEED_KMH ?? 8);
   const minMovementDistanceM = Number(
     env.TELEMATICS_AUTO_START_MIN_MOVEMENT_DISTANCE_M ?? 60,
@@ -192,37 +242,47 @@ function isMovementConfirmed(params: {
     env.TELEMATICS_AUTO_START_MIN_ELAPSED_SECONDS ?? 20,
   );
 
-  if ((params.speedKmh ?? 0) >= minSpeedKmh) {
-    return true;
-  }
+  const series: MovementSample[] = [
+    ...params.recentSamples,
+    {
+      lat: params.currentLat,
+      lng: params.currentLng,
+      speedKmh: params.currentSpeedKmh,
+      recordedAt: params.recordedAt,
+    },
+  ];
 
-  if (
-    !params.previousGpsState?.recordedAt ||
-    params.previousGpsState.latitude == null ||
-    params.previousGpsState.longitude == null
-  ) {
+  // A lone packet is not enough evidence to start a trip.
+  if (series.length < 2) {
     return false;
   }
 
+  const sustainedSpeedSamples = series.filter(
+    (sample) => (sample.speedKmh ?? 0) >= minSpeedKmh,
+  ).length;
+
+  if (sustainedSpeedSamples >= 2) {
+    return true;
+  }
+
+  const oldest = series[0]!;
   const elapsedSeconds = Math.max(
     0,
-    (params.recordedAt.getTime() -
-      params.previousGpsState.recordedAt.getTime()) /
-      1000,
+    (params.recordedAt.getTime() - oldest.recordedAt.getTime()) / 1000,
   );
 
   if (elapsedSeconds < minElapsedSeconds) {
     return false;
   }
 
-  const distanceMeters = haversineMeters(
-    params.previousGpsState.latitude,
-    params.previousGpsState.longitude,
+  const netDistanceMeters = haversineMeters(
+    oldest.lat,
+    oldest.lng,
     params.currentLat,
     params.currentLng,
   );
 
-  return distanceMeters >= minMovementDistanceM;
+  return netDistanceMeters >= minMovementDistanceM;
 }
 
 export async function maybeAutoStartTripFromTelematicsPacket(
@@ -321,12 +381,17 @@ export async function maybeAutoStartTripFromTelematicsPacket(
     };
   }
 
+  const recentSamples = await getRecentMovementSamples(
+    input.gpsDeviceId,
+    input.recordedAt,
+  );
+
   const movementConfirmed = isMovementConfirmed({
-    speedKmh: input.speedKmh,
     currentLat: input.lat,
     currentLng: input.lng,
+    currentSpeedKmh: input.speedKmh,
     recordedAt: input.recordedAt,
-    previousGpsState: input.previousGpsState,
+    recentSamples,
   });
 
   if (!movementConfirmed) {
