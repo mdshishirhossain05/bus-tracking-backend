@@ -428,12 +428,20 @@ export function computeNextStopAndEta(opts: {
             stop.lng,
           );
 
-          const distanceMeters = Math.max(
-            Math.min(routeRemainingMeters, directDistanceMeters),
+          // ETA distance is how far the bus must actually travel along the
+          // route to reach the next stop — not the crow-flies straight line.
+          // Straight-line distance is used only as a lower-bound floor (a
+          // guard against route-progress glitches, since a road is never
+          // shorter than the straight line) and when the bus is already
+          // within the arrival radius of the stop.
+          const distanceMeters =
             directDistanceMeters <= arrivalRadiusMeters
               ? directDistanceMeters
-              : 0,
-          );
+              : clamp(
+                  routeRemainingMeters,
+                  directDistanceMeters,
+                  routeTotalMeters,
+                );
 
           return {
             stopId: stop.stopId,
