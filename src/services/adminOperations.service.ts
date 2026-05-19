@@ -134,6 +134,64 @@ export async function startAdminTripService(input: {
 }
 
 /**
+ * Enables or disables graceful auto-end for a specific running trip. The
+ * stale-timeout safety net still applies regardless of this flag.
+ */
+export async function setTripAutoEndService(input: {
+  tripId: string;
+  disabled: boolean;
+  adminUserId: string | null;
+  adminRole: string | null;
+  route: string | null;
+  method: string | null;
+  requestId: string | null;
+  ip: string | null;
+  userAgent: string | null;
+}) {
+  const trip = await prisma.trip.findUnique({
+    where: { id: input.tripId },
+    select: { id: true, status: true },
+  });
+
+  if (!trip) {
+    throw new AppError({
+      statusCode: 404,
+      code: "TRIP_NOT_FOUND",
+      message: "Trip not found",
+    });
+  }
+
+  if (trip.status !== "RUNNING") {
+    throw new AppError({
+      statusCode: 409,
+      code: "TRIP_NOT_RUNNING",
+      message: "Auto-end can only be changed for a running trip.",
+    });
+  }
+
+  await prisma.trip.update({
+    where: { id: trip.id },
+    data: { autoEndDisabled: input.disabled },
+  });
+
+  await writeAuditLogSafe({
+    actorUserId: input.adminUserId,
+    actorRole: input.adminRole,
+    action: "ADMIN_SET_TRIP_AUTO_END",
+    entityType: "Trip",
+    entityId: trip.id,
+    route: input.route,
+    method: input.method,
+    requestId: input.requestId,
+    ip: input.ip,
+    userAgent: input.userAgent,
+    metaJson: { autoEndDisabled: input.disabled },
+  });
+
+  return { tripId: trip.id, autoEndDisabled: input.disabled };
+}
+
+/**
  * Best-effort realtime presence snapshot from the Socket.IO server:
  * how many distinct users are connected and how many sockets are
  * currently inside each `trip:{id}` room (i.e. watching a live trip).
@@ -579,6 +637,7 @@ export async function getAdminOperationsOverviewService() {
         selectedSource,
         availableSources,
         isStale: trip.isStale,
+        autoEndDisabled: trip.autoEndDisabled,
         watcherCount: presence.tripRoomCounts.get(getTripRoom(trip.id)) ?? 0,
       };
     }),

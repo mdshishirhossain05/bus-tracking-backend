@@ -424,6 +424,8 @@ model Trip {
   lastTrackingSourceLabel      String?
   lastTrackingSourceRecordedAt DateTime?
 
+  autoEndDisabled Boolean @default(false)
+
   bus                Bus              @relation(fields: [busId], references: [id], onDelete: Restrict)
   route              Route            @relation(fields: [routeId], references: [id], onDelete: Restrict)
   driver             User             @relation("DriverTrips", fields: [driverId], references: [id], onDelete: Restrict)
