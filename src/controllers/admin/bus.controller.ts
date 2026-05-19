@@ -9,6 +9,38 @@ import {
 import { uuidParamSchema } from "../../validators/params.validators.js";
 import { cleanUndefined } from "../../utils/clean.js";
 import { writeRequestAudit } from "../../utils/auditRequest.js";
+import { env } from "../../config/env.js";
+
+type GpsDeviceHealth = "ONLINE" | "STALE" | "OFFLINE" | "NEVER_SEEN";
+
+/**
+ * Derives a device's live health from how long ago it last reported,
+ * using the same staleness thresholds as the GPS source pipeline.
+ */
+function deriveGpsDeviceHealth(lastSeenAt: Date | null): {
+  health: GpsDeviceHealth;
+  lastSeenAgeSeconds: number | null;
+} {
+  if (!lastSeenAt) {
+    return { health: "NEVER_SEEN", lastSeenAgeSeconds: null };
+  }
+
+  const lastSeenAgeSeconds = Math.max(
+    0,
+    Math.round((Date.now() - lastSeenAt.getTime()) / 1000),
+  );
+
+  let health: GpsDeviceHealth;
+  if (lastSeenAgeSeconds <= env.GPS_DEVICE_STALE_AFTER_SECONDS) {
+    health = "ONLINE";
+  } else if (lastSeenAgeSeconds <= env.GPS_DEVICE_DISCONNECT_AFTER_SECONDS) {
+    health = "STALE";
+  } else {
+    health = "OFFLINE";
+  }
+
+  return { health, lastSeenAgeSeconds };
+}
 import {
   getTraccarBaseUrl,
   getTraccarDeviceStatus,
@@ -140,6 +172,7 @@ function sanitizeGpsDevice(device: {
     traccarSyncStatus: device.traccarSyncStatus,
     traccarLastSyncAt: device.traccarLastSyncAt,
     traccarLastError: device.traccarLastError,
+    ...deriveGpsDeviceHealth(device.lastSeenAt),
   };
 }
 
