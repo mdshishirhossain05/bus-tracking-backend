@@ -14,6 +14,10 @@ import {
   startTripStaleJob,
   stopTripStaleJob,
 } from "./services/tripStale.job.js";
+import { processDriverLocationUpdate } from "./services/driverLocation.service.js";
+import { locationUpdateSchema } from "./validators/trip.validators.js";
+import { uuidParamSchema } from "./validators/params.validators.js";
+import { AppError } from "./utils/appError.js";
 
 let isShuttingDown = false;
 let httpServer: http.Server | null = null;
@@ -290,6 +294,80 @@ async function bootstrap() {
         socket.leave(getTripRoom(tripId));
         socketLogger.info({ tripId }, "left trip room");
         socket.emit(SOCKET_EVENTS.LEFT_TRIP, { tripId });
+      }
+    });
+
+    // Realtime driver location ingestion. Streams over the persistent socket
+    // instead of one HTTP request per fix; the result is returned via the
+    // ack callback so the driver client gets the same authoritative payload
+    // the HTTP endpoint would have produced.
+    socket.on(SOCKET_EVENTS.DRIVER_LOCATION, async (payload, ack) => {
+      const respond = typeof ack === "function" ? ack : () => {};
+      const auth = socket.data.auth;
+
+      if (!auth) {
+        respond({ ok: false, code: "UNAUTHORIZED", message: "Unauthorized" });
+        return;
+      }
+
+      if (auth.role !== "DRIVER") {
+        respond({
+          ok: false,
+          code: "FORBIDDEN",
+          message: "Driver role required",
+        });
+        return;
+      }
+
+      const body = (payload ?? {}) as Record<string, unknown>;
+
+      const tripIdParsed = uuidParamSchema.safeParse(body.tripId);
+      if (!tripIdParsed.success) {
+        respond({
+          ok: false,
+          code: "INVALID_TRIP_ID",
+          message: "Invalid tripId",
+        });
+        return;
+      }
+
+      const locationParsed = locationUpdateSchema.safeParse(
+        body.location ?? body,
+      );
+      if (!locationParsed.success) {
+        respond({
+          ok: false,
+          code: "VALIDATION_ERROR",
+          message: "Invalid location data",
+          details: locationParsed.error.format(),
+        });
+        return;
+      }
+
+      try {
+        const data = await processDriverLocationUpdate({
+          driverId: auth.userId,
+          tripId: tripIdParsed.data,
+          input: locationParsed.data,
+          logger: socketLogger,
+        });
+
+        respond({ ok: true, data });
+      } catch (err) {
+        if (err instanceof AppError) {
+          respond({ ok: false, code: err.code, message: err.message });
+          return;
+        }
+
+        socketLogger.error(
+          { err, tripId: tripIdParsed.data },
+          "driver:location failed",
+        );
+        respond({
+          ok: false,
+          code: "INTERNAL_ERROR",
+          message: "Failed to process location update",
+        });
       }
     });
 

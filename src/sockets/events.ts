@@ -8,6 +8,8 @@ export const SOCKET_EVENTS = {
   LEAVE_TRIP: "leave_trip",
   LEFT_TRIP: "left_trip",
 
+  DRIVER_LOCATION: "driver:location",
+
   LOCATION_UPDATED: "trip:location_updated",
   ETA_UPDATED: "trip:eta_updated",
   STOP_ARRIVAL: "trip:stop_arrival",
