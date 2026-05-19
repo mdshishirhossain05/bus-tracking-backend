@@ -1,4 +1,6 @@
+import { Prisma } from "@prisma/client";
 import { prisma } from "../config/prisma.js";
+import { redis } from "../config/redis.js";
 import { haversineMeters, toNumber } from "../utils/geo.js";
 import { getDayTypeForDate } from "../utils/dayType.js";
 import { env } from "../config/env.js";
@@ -7,6 +9,15 @@ import { getLatestArrivedStopForTrip } from "./stopArrivalProgress.service.js";
 const DHAKA_OFFSET_MIN = 6 * 60;
 const PASSED_STOP_PROGRESS_BUFFER_METERS = 35;
 const PASSED_STOP_MAX_DIRECT_DISTANCE_METERS = 220;
+
+/** The bus must stay within a stop's radius this long before arrival is confirmed. */
+const ARRIVAL_DWELL_SECONDS = 8;
+/** Lifetime of the in-radius dwell candidate marker. */
+const ARRIVAL_CANDIDATE_TTL_MS = 90_000;
+
+function arrivalCandidateKey(tripId: string, stopId: string) {
+  return `tripArrival:${tripId}:${stopId}`;
+}
 
 type RouteStopWithStop = {
   stopOrder: number;
@@ -255,7 +266,18 @@ async function createStopArrival(params: {
     createData.scheduledTime = chosenSchedule.scheduledTime;
   }
 
-  await prisma.stopArrival.create({ data: createData });
+  try {
+    await prisma.stopArrival.create({ data: createData });
+  } catch (error) {
+    if (
+      error instanceof Prisma.PrismaClientKnownRequestError &&
+      error.code === "P2002"
+    ) {
+      // A concurrent detection already recorded this arrival — safe no-op.
+      return null;
+    }
+    throw error;
+  }
 
   return {
     tripId,
@@ -327,14 +349,43 @@ export async function detectStopArrival(opts: {
     expectedStop.lng,
   );
 
+  const candidateKey = arrivalCandidateKey(tripId, expectedStop.stopId);
+
   if (expectedDistanceMeters <= radius) {
-    return createStopArrival({
+    // Dwell hysteresis: confirm an arrival only once the bus has stayed
+    // within the stop radius for a sustained moment, so a single noisy GPS
+    // packet that briefly clips the radius cannot record a premature arrival.
+    const firstSeenRaw = await redis.get(candidateKey);
+
+    if (!firstSeenRaw) {
+      await redis.set(candidateKey, recordedAt.toISOString(), {
+        PX: ARRIVAL_CANDIDATE_TTL_MS,
+      });
+      return null;
+    }
+
+    const firstSeenAt = new Date(firstSeenRaw);
+    const firstSeenValid = !Number.isNaN(firstSeenAt.getTime());
+    const dwellSeconds = firstSeenValid
+      ? (recordedAt.getTime() - firstSeenAt.getTime()) / 1000
+      : 0;
+
+    if (dwellSeconds < ARRIVAL_DWELL_SECONDS) {
+      return null;
+    }
+
+    const confirmed = await createStopArrival({
       tripId,
       routeId: trip.routeId,
       stop: expectedStop,
       distanceMeters: expectedDistanceMeters,
-      recordedAt,
+      // Record the moment the bus first reached the stop, not the later
+      // confirming packet, so the arrival time stays accurate.
+      recordedAt: firstSeenValid ? firstSeenAt : recordedAt,
     });
+
+    if (confirmed) await redis.del(candidateKey);
+    return confirmed;
   }
 
   const cumulative = buildCumulativeDistances(routeStops);
@@ -357,13 +408,17 @@ export async function detectStopArrival(opts: {
     currentProgress.crossTrackDistanceMeters <= Math.max(radius * 1.7, 130);
 
   if (hasPassedExpectedStop && stillCloseEnoughToTrustPass) {
-    return createStopArrival({
+    // Passing the stop is itself confirmation — record without waiting for
+    // dwell and clear any pending in-radius candidate.
+    const confirmed = await createStopArrival({
       tripId,
       routeId: trip.routeId,
       stop: expectedStop,
       distanceMeters: expectedDistanceMeters,
       recordedAt,
     });
+    await redis.del(candidateKey);
+    return confirmed;
   }
 
   return null;
