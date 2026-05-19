@@ -109,6 +109,8 @@ const envSchema = z.object({
     .positive()
     .default(180),
 
+  GPS_INGEST_MAX_SPEED_KMH: z.coerce.number().positive().default(300),
+
   DRIVER_SOURCE_STALE_AFTER_SECONDS: z.coerce
     .number()
     .int()
