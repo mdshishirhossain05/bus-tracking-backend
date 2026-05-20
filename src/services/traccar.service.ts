@@ -222,6 +222,73 @@ export async function reconcileTraccarDevice(device: LocalGpsDeviceForTraccar) {
   };
 }
 
+export type TraccarRemotePosition = {
+  id: number;
+  deviceId: number;
+  latitude: number;
+  longitude: number;
+  /** Knots — convert to km/h with `*1.852` when ingesting. */
+  speed: number | null;
+  course: number | null;
+  accuracy: number | null;
+  fixTime: string | null;
+  deviceTime: string | null;
+  serverTime: string | null;
+  raw: Record<string, unknown>;
+};
+
+function parseTraccarPosition(item: any): TraccarRemotePosition | null {
+  if (!item || typeof item !== "object") return null;
+
+  const lat = Number(item.latitude);
+  const lng = Number(item.longitude);
+  if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null;
+
+  const speed =
+    item.speed != null && Number.isFinite(Number(item.speed))
+      ? Number(item.speed)
+      : null;
+  const course =
+    item.course != null && Number.isFinite(Number(item.course))
+      ? Number(item.course)
+      : null;
+  const accuracy =
+    item.accuracy != null && Number.isFinite(Number(item.accuracy))
+      ? Number(item.accuracy)
+      : null;
+
+  return {
+    id: Number(item.id),
+    deviceId: Number(item.deviceId),
+    latitude: lat,
+    longitude: lng,
+    speed,
+    course,
+    accuracy,
+    fixTime: typeof item.fixTime === "string" ? item.fixTime : null,
+    deviceTime: typeof item.deviceTime === "string" ? item.deviceTime : null,
+    serverTime: typeof item.serverTime === "string" ? item.serverTime : null,
+    raw: item as Record<string, unknown>,
+  };
+}
+
+/**
+ * Latest reported position for a Traccar device. Traccar returns an array of
+ * the most recent positions when called without a time window — we take the
+ * first one (newest).
+ */
+export async function fetchTraccarLatestPositionForDevice(
+  traccarDeviceId: number,
+): Promise<TraccarRemotePosition | null> {
+  const result = await traccarRequest<any>(
+    `/positions?deviceId=${traccarDeviceId}`,
+    { method: "GET" },
+  );
+
+  if (!Array.isArray(result) || result.length === 0) return null;
+  return parseTraccarPosition(result[0]);
+}
+
 export async function getTraccarDeviceStatus(device: LocalGpsDeviceForTraccar) {
   const uniqueId = buildTraccarUniqueId(device);
 

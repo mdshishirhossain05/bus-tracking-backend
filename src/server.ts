@@ -14,6 +14,10 @@ import {
   startTripStaleJob,
   stopTripStaleJob,
 } from "./services/tripStale.job.js";
+import {
+  startTraccarPollJob,
+  stopTraccarPollJob,
+} from "./services/traccarPoll.job.js";
 import { processDriverLocationUpdate } from "./services/driverLocation.service.js";
 import { locationUpdateSchema } from "./validators/trip.validators.js";
 import { uuidParamSchema } from "./validators/params.validators.js";
@@ -76,6 +80,15 @@ function startBackgroundServices() {
   }, 0);
 
   setTimeout(() => {
+    try {
+      startTraccarPollJob();
+      serverLogger.info("traccar poll job startup requested");
+    } catch (err) {
+      serverLogger.error({ err }, "traccar poll job failed to start");
+    }
+  }, 0);
+
+  setTimeout(() => {
     void initializeSocketRedisAdapter().catch((err) => {
       serverLogger.error(
         { err },
@@ -101,6 +114,12 @@ async function shutdown(signal: string) {
       stopTripStaleJob();
     } catch (err) {
       serverLogger.error({ err }, "failed stopping trip stale job");
+    }
+
+    try {
+      stopTraccarPollJob();
+    } catch (err) {
+      serverLogger.error({ err }, "failed stopping traccar poll job");
     }
 
     if (httpServer) {
