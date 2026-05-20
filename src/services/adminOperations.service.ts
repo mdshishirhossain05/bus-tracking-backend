@@ -8,6 +8,7 @@ import { logSystemAlert } from "./tripEvent.service.js";
 import { getIO } from "../sockets/io.js";
 import { getTripRoom } from "../sockets/events.js";
 import { createTripFromServiceSchedule } from "./trip.service.js";
+import { getDayTypeForDate } from "../utils/dayType.js";
 import {
   acquireTripStartLock,
   releaseTripStartLock,
@@ -668,6 +669,8 @@ export async function getAdminOperationsOverviewService() {
         )
       : null;
 
+  const scheduledItems = await getTodaysScheduledItems(mappedTrips);
+
   return {
     kpis: {
       activeTrips: activeTrips.length,
@@ -678,9 +681,110 @@ export async function getAdminOperationsOverviewService() {
       averageEtaMinutes,
       onlineUsers: presence.onlineUsers,
       liveWatchers: presence.liveWatchers,
+      pendingSchedules: scheduledItems.length,
     },
     trips: mappedTrips,
+    scheduledItems,
   };
+}
+
+/**
+ * Today's active service schedules that don't already have a running trip.
+ * Surfaces "this bus is supposed to be on the road right now" entries on the
+ * admin operations console so a GPS-only schedule can be seen (and started
+ * manually if telematics auto-start hasn't kicked in yet) without having to
+ * cross-reference the Schedules tab.
+ */
+async function getTodaysScheduledItems(
+  mappedTrips: Array<{ busId: string; status: string }>,
+) {
+  const now = new Date();
+  const dayType = getDayTypeForDate(now);
+  const busesWithRunningTrip = new Set(
+    mappedTrips
+      .filter((trip) => trip.status === "RUNNING")
+      .map((trip) => trip.busId),
+  );
+
+  const schedules = await prisma.serviceSchedule.findMany({
+    where: {
+      dayType,
+      isActive: true,
+      route: { isActive: true },
+      bus: { isActive: true },
+      OR: [{ driverId: null }, { driver: { isActive: true } }],
+    },
+    include: {
+      route: { select: { id: true, routeName: true } },
+      bus: {
+        select: {
+          id: true,
+          busCode: true,
+          plateNumber: true,
+          gpsAssignments: {
+            where: { isActive: true, unassignedAt: null },
+            take: 1,
+            select: {
+              gpsDevice: {
+                select: {
+                  id: true,
+                  deviceCode: true,
+                  displayName: true,
+                  isActive: true,
+                  lastSeenAt: true,
+                  lastStatus: true,
+                  lastRecordedAt: true,
+                },
+              },
+            },
+          },
+        },
+      },
+      driver: { select: { id: true, fullName: true, email: true } },
+    },
+    orderBy: [{ departureTime: "asc" }, { createdAt: "asc" }],
+  });
+
+  return schedules
+    .filter((schedule) => !busesWithRunningTrip.has(schedule.busId))
+    .map((schedule) => {
+      const gpsAssignment = schedule.bus.gpsAssignments[0]?.gpsDevice ?? null;
+      const departureSeconds = Math.floor(
+        schedule.departureTime.getTime() % (24 * 60 * 60 * 1000) / 1000,
+      );
+      const nowSeconds =
+        now.getUTCHours() * 3600 +
+        now.getUTCMinutes() * 60 +
+        now.getUTCSeconds();
+
+      return {
+        serviceScheduleId: schedule.id,
+        routeId: schedule.routeId,
+        routeName: schedule.route.routeName,
+        busId: schedule.busId,
+        busLabel: schedule.bus.busCode,
+        plateNumber: schedule.bus.plateNumber,
+        driverId: schedule.driverId,
+        driverName: schedule.driver?.fullName ?? null,
+        driverEmail: schedule.driver?.email ?? null,
+        dayType: schedule.dayType,
+        departureTime: schedule.departureTime.toISOString().slice(11, 19),
+        secondsUntilDeparture: departureSeconds - nowSeconds,
+        gpsDevice: gpsAssignment
+          ? {
+              id: gpsAssignment.id,
+              deviceCode: gpsAssignment.deviceCode,
+              displayName: gpsAssignment.displayName,
+              isActive: gpsAssignment.isActive,
+              lastSeenAt: gpsAssignment.lastSeenAt?.toISOString() ?? null,
+              lastRecordedAt:
+                gpsAssignment.lastRecordedAt?.toISOString() ?? null,
+              lastStatus: gpsAssignment.lastStatus ?? null,
+            }
+          : null,
+        tripStarter: schedule.driverId == null ? "GPS_AUTO" : "DRIVER",
+      };
+    });
 }
 
 export async function getAdminActiveTripsService() {
@@ -708,6 +812,7 @@ export async function getAdminActiveTripsService() {
       selectedSource: trip.selectedSource,
       availableSources: trip.availableSources,
     })),
+    scheduledItems: data.scheduledItems,
   };
 }
 
