@@ -374,7 +374,7 @@ model ServiceSchedule {
   id            String         @id @default(uuid())
   routeId       String
   busId         String
-  driverId      String
+  driverId      String?
   dayType       ServiceDayType
   departureTime DateTime       @db.Time(0)
   isActive      Boolean        @default(true)
@@ -382,9 +382,9 @@ model ServiceSchedule {
   createdAt     DateTime       @default(now())
   updatedAt     DateTime       @updatedAt
 
-  route  Route @relation(fields: [routeId], references: [id], onDelete: Restrict)
-  bus    Bus   @relation(fields: [busId], references: [id], onDelete: Restrict)
-  driver User  @relation("DriverServiceSchedules", fields: [driverId], references: [id], onDelete: Restrict)
+  route  Route  @relation(fields: [routeId], references: [id], onDelete: Restrict)
+  bus    Bus    @relation(fields: [busId], references: [id], onDelete: Restrict)
+  driver User?  @relation("DriverServiceSchedules", fields: [driverId], references: [id], onDelete: Restrict)
   trips  Trip[]
 
   @@index([routeId])
@@ -398,7 +398,7 @@ model Trip {
   id                   String             @id @default(uuid())
   busId                String
   routeId              String
-  driverId             String
+  driverId             String?
   serviceScheduleId    String?
   status               TripStatus         @default(PLANNED)
   startTime            DateTime?
@@ -428,7 +428,7 @@ model Trip {
 
   bus                Bus              @relation(fields: [busId], references: [id], onDelete: Restrict)
   route              Route            @relation(fields: [routeId], references: [id], onDelete: Restrict)
-  driver             User             @relation("DriverTrips", fields: [driverId], references: [id], onDelete: Restrict)
+  driver             User?            @relation("DriverTrips", fields: [driverId], references: [id], onDelete: Restrict)
   serviceSchedule    ServiceSchedule? @relation(fields: [serviceScheduleId], references: [id], onDelete: SetNull)
   startedByGpsDevice GpsDevice?       @relation("TripStartedByGpsDevice", fields: [startedByGpsDeviceId], references: [id], onDelete: SetNull)
 

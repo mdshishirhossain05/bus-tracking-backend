@@ -25,7 +25,7 @@ type RunningTripRecord = {
   id: string;
   routeId: string;
   busId: string;
-  driverId: string;
+  driverId: string | null;
   status: string;
   startTime: Date | null;
   endTime: Date | null;
@@ -34,7 +34,7 @@ type RunningTripRecord = {
   startedByGpsDeviceId?: string | null;
   route: { routeName: string };
   bus: { busCode: string };
-  driver: { fullName: string };
+  driver: { fullName: string } | null;
   lastLatitude?: Prisma.Decimal | null;
   lastLongitude?: Prisma.Decimal | null;
   lastSpeedKmh?: Prisma.Decimal | null;
@@ -69,7 +69,7 @@ type PlannedScheduleRecord = {
   id: string;
   routeId: string;
   busId: string;
-  driverId: string;
+  driverId: string | null;
   dayType:
     | "SUNDAY"
     | "MONDAY"
@@ -83,7 +83,7 @@ type PlannedScheduleRecord = {
   createdAt: Date;
   route: { routeName: string };
   bus: { busCode: string };
-  driver: { fullName: string };
+  driver: { fullName: string } | null;
 };
 
 export type TripActivationModeValue =
@@ -95,7 +95,7 @@ export type TripCreateFromScheduleInput = {
   serviceScheduleId: string;
   routeId: string;
   busId: string;
-  driverId: string;
+  driverId: string | null;
   startedAt: Date;
   activationMode: TripActivationModeValue;
   startedByGpsDeviceId?: string | null;
@@ -437,7 +437,7 @@ async function mapTrip(trip: RunningTripRecord) {
     busId: trip.busId,
     busLabel: trip.bus.busCode,
     driverId: trip.driverId,
-    driverName: trip.driver.fullName,
+    driverName: trip.driver?.fullName ?? null,
     status: trip.status,
     startedAt: trip.startTime?.toISOString() ?? null,
     endedAt: trip.endTime?.toISOString() ?? null,
@@ -756,7 +756,7 @@ export async function getCurrentDriverTripService(driverId: string) {
     busId: schedule.busId,
     busLabel: schedule.bus.busCode,
     driverId,
-    driverName: schedule.driver.fullName,
+    driverName: schedule.driver?.fullName ?? null,
     status: "PLANNED" as const,
     startedAt: null,
     endedAt: null,

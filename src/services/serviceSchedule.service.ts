@@ -150,27 +150,28 @@ async function ensureOperationalRouteReadiness(routeId: string) {
   }
 }
 
+async function busHasActiveGpsDevice(busId: string) {
+  const assignment = await prisma.busGpsDeviceAssignment.findFirst({
+    where: {
+      busId,
+      isActive: true,
+      unassignedAt: null,
+    },
+    select: { id: true },
+  });
+
+  return Boolean(assignment);
+}
+
 async function ensureAssignmentEntities(input: {
   routeId: string;
   busId: string;
-  driverId: string;
+  driverId: string | null | undefined;
 }) {
-  const [bus, driver] = await Promise.all([
-    prisma.bus.findUnique({
-      where: { id: input.busId },
-      select: { id: true, isActive: true, busCode: true, plateNumber: true },
-    }),
-    prisma.user.findUnique({
-      where: { id: input.driverId },
-      select: {
-        id: true,
-        fullName: true,
-        email: true,
-        role: true,
-        isActive: true,
-      },
-    }),
-  ]);
+  const bus = await prisma.bus.findUnique({
+    where: { id: input.busId },
+    select: { id: true, isActive: true, busCode: true, plateNumber: true },
+  });
 
   await ensureOperationalRouteReadiness(input.routeId);
 
@@ -189,6 +190,31 @@ async function ensureAssignmentEntities(input: {
       message: "Inactive bus cannot be assigned",
     });
   }
+
+  // Driver-less schedules are only allowed when the bus has an active GPS
+  // device assignment — the device becomes the schedule's tracking source.
+  if (input.driverId == null) {
+    if (!(await busHasActiveGpsDevice(input.busId))) {
+      throw new AppError({
+        statusCode: 400,
+        code: "DRIVER_OR_GPS_DEVICE_REQUIRED",
+        message:
+          "Assign a driver, or attach a GPS device to the bus, before scheduling.",
+      });
+    }
+    return;
+  }
+
+  const driver = await prisma.user.findUnique({
+    where: { id: input.driverId },
+    select: {
+      id: true,
+      fullName: true,
+      email: true,
+      role: true,
+      isActive: true,
+    },
+  });
 
   if (!driver) {
     throw new AppError({
@@ -218,7 +244,7 @@ async function ensureAssignmentEntities(input: {
 async function ensureNoOperationalConflict(params: {
   excludeId?: string;
   busId: string;
-  driverId: string;
+  driverId: string | null | undefined;
   dayType:
     | "SUNDAY"
     | "MONDAY"
@@ -250,17 +276,19 @@ async function ensureNoOperationalConflict(params: {
         route: { select: { routeName: true } },
       },
     }),
-    prisma.serviceSchedule.findFirst({
-      where: {
-        ...whereBase,
-        driverId: params.driverId,
-      },
-      select: {
-        id: true,
-        driver: { select: { fullName: true } },
-        route: { select: { routeName: true } },
-      },
-    }),
+    params.driverId == null
+      ? Promise.resolve(null)
+      : prisma.serviceSchedule.findFirst({
+          where: {
+            ...whereBase,
+            driverId: params.driverId,
+          },
+          select: {
+            id: true,
+            driver: { select: { fullName: true } },
+            route: { select: { routeName: true } },
+          },
+        }),
   ]);
 
   if (busConflict) {
@@ -277,7 +305,7 @@ async function ensureNoOperationalConflict(params: {
     });
   }
 
-  if (driverConflict) {
+  if (driverConflict && driverConflict.driver) {
     throw new AppError({
       statusCode: 409,
       code: "DRIVER_SCHEDULE_CONFLICT",
@@ -296,7 +324,7 @@ function toServiceScheduleDto(item: {
   id: string;
   routeId: string;
   busId: string;
-  driverId: string;
+  driverId: string | null;
   dayType:
     | "SUNDAY"
     | "MONDAY"
@@ -312,7 +340,7 @@ function toServiceScheduleDto(item: {
   updatedAt: Date;
   route: { id: string; routeName: string };
   bus: { id: string; busCode: string; plateNumber: string | null };
-  driver: { id: string; fullName: string; email: string };
+  driver: { id: string; fullName: string; email: string } | null;
   _count?: { trips: number };
 }) {
   return {
@@ -323,8 +351,8 @@ function toServiceScheduleDto(item: {
     busCode: item.bus.busCode,
     plateNumber: item.bus.plateNumber,
     driverId: item.driverId,
-    driverName: item.driver.fullName,
-    driverEmail: item.driver.email,
+    driverName: item.driver?.fullName ?? null,
+    driverEmail: item.driver?.email ?? null,
     dayType: item.dayType,
     departureTime: formatTime(item.departureTime),
     isActive: item.isActive,
@@ -418,15 +446,17 @@ export async function getServiceScheduleByIdService(id: string) {
 export async function createServiceScheduleService(
   input: CreateServiceScheduleInput,
 ) {
+  const driverId = input.driverId ?? null;
+
   await ensureAssignmentEntities({
     routeId: input.routeId,
     busId: input.busId,
-    driverId: input.driverId,
+    driverId,
   });
 
   await ensureNoOperationalConflict({
     busId: input.busId,
-    driverId: input.driverId,
+    driverId,
     dayType: input.dayType,
     departureTime: input.departureTime,
   });
@@ -435,7 +465,7 @@ export async function createServiceScheduleService(
     data: {
       routeId: input.routeId,
       busId: input.busId,
-      driverId: input.driverId,
+      driverId,
       dayType: input.dayType,
       departureTime: parseTimeToDate(input.departureTime),
       isActive: input.isActive ?? true,
@@ -479,7 +509,10 @@ export async function updateServiceScheduleService(
 
   const nextRouteId = input.routeId ?? existing.routeId;
   const nextBusId = input.busId ?? existing.busId;
-  const nextDriverId = input.driverId ?? existing.driverId;
+  // `driverId === null` in the request means "clear the driver"; `undefined`
+  // means "leave it alone". Distinguish the two with `in input` semantics.
+  const nextDriverId =
+    input.driverId === undefined ? existing.driverId : input.driverId;
   const nextDayType = input.dayType ?? existing.dayType;
   const nextDepartureTime =
     input.departureTime ?? formatTime(existing.departureTime);
@@ -505,7 +538,9 @@ export async function updateServiceScheduleService(
     data: {
       ...(input.routeId !== undefined ? { routeId: input.routeId } : {}),
       ...(input.busId !== undefined ? { busId: input.busId } : {}),
-      ...(input.driverId !== undefined ? { driverId: input.driverId } : {}),
+      ...(input.driverId !== undefined
+        ? { driverId: input.driverId ?? null }
+        : {}),
       ...(input.dayType !== undefined ? { dayType: input.dayType } : {}),
       ...(input.departureTime !== undefined
         ? { departureTime: parseTimeToDate(input.departureTime) }

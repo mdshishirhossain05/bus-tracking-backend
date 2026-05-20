@@ -364,7 +364,7 @@ async function recomputeAndPublishEtaFromCanonical(params: {
   tripId: string;
   routeId: string;
   busId: string;
-  driverId: string;
+  driverId: string | null;
   sourceType: "DRIVER_MOBILE" | "GPS_DEVICE";
   rawSpeedKmh: number | null;
   speedKmh: number | null;
@@ -457,7 +457,7 @@ async function detectAndPublishGpsStopArrival(params: {
   tripId: string;
   routeId: string;
   busId: string;
-  driverId: string;
+  driverId: string | null;
   currentLat: number;
   currentLng: number;
   recordedAt: Date;
