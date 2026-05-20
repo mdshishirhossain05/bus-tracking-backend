@@ -297,8 +297,22 @@ export async function getTraccarDeviceStatus(device: LocalGpsDeviceForTraccar) {
       ? await fetchTraccarDeviceById(device.traccarDeviceId)
       : await fetchTraccarDeviceByUniqueId(uniqueId);
 
+  // Pull the latest position alongside the device record so the Diagnose UI
+  // can distinguish a fresh heartbeat (`lastUpdate`) from a stale GPS fix
+  // (`fixTime`) — the most common reason a device is "online" but our
+  // backend's `lastRecordedAt` doesn't move forward.
+  let latestPosition: TraccarRemotePosition | null = null;
+  if (remote?.id != null) {
+    try {
+      latestPosition = await fetchTraccarLatestPositionForDevice(remote.id);
+    } catch {
+      latestPosition = null;
+    }
+  }
+
   return {
     remoteDevice: remote,
+    latestPosition,
     resolvedUniqueId: uniqueId,
     resolvedServerBaseUrl: getTraccarBaseUrl(),
   };

@@ -702,6 +702,7 @@ export async function getGpsDeviceTraccarStatus(req: Request, res: Response) {
       gpsDevice: sanitizeGpsDevice(device),
       traccarConfigured: true,
       remoteDevice: result.remoteDevice,
+      latestPosition: result.latestPosition,
       resolvedUniqueId: result.resolvedUniqueId,
       resolvedServerBaseUrl: result.resolvedServerBaseUrl,
     });
