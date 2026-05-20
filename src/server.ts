@@ -18,6 +18,10 @@ import {
   startTraccarPollJob,
   stopTraccarPollJob,
 } from "./services/traccarPoll.job.js";
+import {
+  startTraccarRealtime,
+  stopTraccarRealtime,
+} from "./services/traccarRealtime.service.js";
 import { processDriverLocationUpdate } from "./services/driverLocation.service.js";
 import { locationUpdateSchema } from "./validators/trip.validators.js";
 import { uuidParamSchema } from "./validators/params.validators.js";
@@ -89,6 +93,15 @@ function startBackgroundServices() {
   }, 0);
 
   setTimeout(() => {
+    try {
+      startTraccarRealtime();
+      serverLogger.info("traccar realtime startup requested");
+    } catch (err) {
+      serverLogger.error({ err }, "traccar realtime failed to start");
+    }
+  }, 0);
+
+  setTimeout(() => {
     void initializeSocketRedisAdapter().catch((err) => {
       serverLogger.error(
         { err },
@@ -120,6 +133,12 @@ async function shutdown(signal: string) {
       stopTraccarPollJob();
     } catch (err) {
       serverLogger.error({ err }, "failed stopping traccar poll job");
+    }
+
+    try {
+      stopTraccarRealtime();
+    } catch (err) {
+      serverLogger.error({ err }, "failed stopping traccar realtime");
     }
 
     if (httpServer) {

@@ -155,6 +155,13 @@ const envSchema = z.object({
   // online in Traccar but Never seen in our system" bugs.
   TRACCAR_POLL_ENABLED: z.coerce.boolean().default(true),
   TRACCAR_POLL_INTERVAL_MS: z.coerce.number().int().positive().default(8000),
+
+  // Realtime push from Traccar via its WebSocket endpoint. This gives us
+  // sub-second position updates instead of waiting for the next poll cycle,
+  // which is the right experience for a GPS-tracked bus. Keep the poll job
+  // enabled too — it's a safety net for missed packets and for the warmup
+  // window before the WebSocket auth completes.
+  TRACCAR_REALTIME_ENABLED: z.coerce.boolean().default(true),
   TELEMATICS_AUTO_START_REQUIRE_HEALTHY_SOURCE: z.coerce
     .boolean()
     .default(true),
