@@ -277,11 +277,13 @@ export async function getLiveBusesByRouteService(routeId: string) {
           plateNumber: trip.bus.plateNumber,
           capacity: trip.bus.capacity,
         },
-        driver: {
-          id: trip.driver.id,
-          fullName: trip.driver.fullName,
-          email: trip.driver.email,
-        },
+        driver: trip.driver
+          ? {
+              id: trip.driver.id,
+              fullName: trip.driver.fullName,
+              email: trip.driver.email,
+            }
+          : null,
         live,
         eta,
       };
@@ -404,11 +406,13 @@ export async function getLiveTripStateService(tripId: string) {
       plateNumber: trip.bus.plateNumber,
       capacity: trip.bus.capacity,
     },
-    driver: {
-      id: trip.driver.id,
-      fullName: trip.driver.fullName,
-      email: trip.driver.email,
-    },
+    driver: trip.driver
+      ? {
+          id: trip.driver.id,
+          fullName: trip.driver.fullName,
+          email: trip.driver.email,
+        }
+      : null,
     live,
     eta,
   };

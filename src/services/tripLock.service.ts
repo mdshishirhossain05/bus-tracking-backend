@@ -13,7 +13,7 @@ function driverLockKey(driverId: string) {
 
 export type TripLock = {
   busKey: string;
-  driverKey: string;
+  driverKey: string | null;
   token: string;
 };
 
@@ -24,18 +24,19 @@ function randomToken() {
 }
 
 /**
- * Acquire both bus + driver locks.
- * Uses same token so release is simple and safe.
+ * Acquire bus + (optional) driver locks. Driver-less schedules — GPS-only
+ * buses — skip the driver lock entirely; the bus lock is the only invariant
+ * that matters.
  */
 export async function acquireTripStartLock(params: {
   busId: string;
-  driverId: string;
+  driverId: string | null;
 }): Promise<{ ok: true; lock: TripLock } | { ok: false; reason: string }> {
   const { busId, driverId } = params;
 
   const token = randomToken();
   const busKey = busLockKey(busId);
-  const driverKey = driverLockKey(driverId);
+  const driverKey = driverId != null ? driverLockKey(driverId) : null;
 
   const busOk = await redis.set(busKey, token, {
     PX: LOCK_TTL_MS,
@@ -46,14 +47,16 @@ export async function acquireTripStartLock(params: {
     return { ok: false, reason: "BUS_LOCKED" };
   }
 
-  const driverOk = await redis.set(driverKey, token, {
-    PX: LOCK_TTL_MS,
-    NX: true,
-  });
+  if (driverKey) {
+    const driverOk = await redis.set(driverKey, token, {
+      PX: LOCK_TTL_MS,
+      NX: true,
+    });
 
-  if (driverOk !== "OK") {
-    await releaseLockKey(busKey, token);
-    return { ok: false, reason: "DRIVER_LOCKED" };
+    if (driverOk !== "OK") {
+      await releaseLockKey(busKey, token);
+      return { ok: false, reason: "DRIVER_LOCKED" };
+    }
   }
 
   return {
@@ -82,6 +85,8 @@ return 0
 export async function releaseTripStartLock(lock: TripLock): Promise<void> {
   await Promise.all([
     releaseLockKey(lock.busKey, lock.token),
-    releaseLockKey(lock.driverKey, lock.token),
+    lock.driverKey
+      ? releaseLockKey(lock.driverKey, lock.token)
+      : Promise.resolve(),
   ]);
 }

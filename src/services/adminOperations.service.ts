@@ -49,7 +49,7 @@ export async function startAdminTripService(input: {
     !schedule.isActive ||
     !schedule.route.isActive ||
     !schedule.bus.isActive ||
-    !schedule.driver.isActive
+    (schedule.driver != null && !schedule.driver.isActive)
   ) {
     throw new AppError({
       statusCode: 409,
@@ -85,16 +85,18 @@ export async function startAdminTripService(input: {
       });
     }
 
-    const runningForDriver = await prisma.trip.findFirst({
-      where: { driverId: schedule.driverId, status: "RUNNING" },
-      select: { id: true },
-    });
-    if (runningForDriver) {
-      throw new AppError({
-        statusCode: 409,
-        code: "DRIVER_ALREADY_IN_RUNNING_TRIP",
-        message: "This driver is already on a running trip.",
+    if (schedule.driverId != null) {
+      const runningForDriver = await prisma.trip.findFirst({
+        where: { driverId: schedule.driverId, status: "RUNNING" },
+        select: { id: true },
       });
+      if (runningForDriver) {
+        throw new AppError({
+          statusCode: 409,
+          code: "DRIVER_ALREADY_IN_RUNNING_TRIP",
+          message: "This driver is already on a running trip.",
+        });
+      }
     }
 
     const created = await createTripFromServiceSchedule({
@@ -122,7 +124,7 @@ export async function startAdminTripService(input: {
         serviceScheduleId: schedule.id,
         routeName: schedule.route.routeName,
         busCode: schedule.bus.busCode,
-        driverName: schedule.driver.fullName,
+        driverName: schedule.driver?.fullName ?? null,
         startMode: "MANUAL_ADMIN",
       },
     });
@@ -604,7 +606,7 @@ export async function getAdminOperationsOverviewService() {
         busLabel: trip.bus.busCode,
         plateNumber: trip.bus.plateNumber,
         driverId: trip.driverId,
-        driverName: trip.driver.fullName,
+        driverName: trip.driver?.fullName ?? null,
         status: trip.status,
         startedAt: trip.startTime?.toISOString() ?? null,
         endedAt: trip.endTime?.toISOString() ?? null,
@@ -893,11 +895,13 @@ export async function getAdminTripSourceDiagnosticsService(tripId: string) {
       busCode: trip.bus.busCode,
       plateNumber: trip.bus.plateNumber,
     },
-    driver: {
-      id: trip.driver.id,
-      fullName: trip.driver.fullName,
-      email: trip.driver.email,
-    },
+    driver: trip.driver
+      ? {
+          id: trip.driver.id,
+          fullName: trip.driver.fullName,
+          email: trip.driver.email,
+        }
+      : null,
     canonical: {
       selectedSource,
       liveState: canonicalRealtime
@@ -992,8 +996,8 @@ export async function getAdminTripOperationsDetailService(tripId: string) {
       busLabel: trip.bus.busCode,
       plateNumber: trip.bus.plateNumber,
       driverId: trip.driverId,
-      driverName: trip.driver.fullName,
-      driverEmail: trip.driver.email,
+      driverName: trip.driver?.fullName ?? null,
+      driverEmail: trip.driver?.email ?? null,
       serviceScheduleId: trip.serviceScheduleId ?? null,
       status: trip.status,
       activationMode: trip.activationMode,

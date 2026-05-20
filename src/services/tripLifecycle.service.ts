@@ -51,7 +51,7 @@ type FinalizeTripResult = {
     id: string;
     routeId: string;
     busId: string;
-    driverId: string;
+    driverId: string | null;
     status: "ENDED";
     endTime: Date | null;
   };

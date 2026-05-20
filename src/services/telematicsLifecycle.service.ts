@@ -20,12 +20,12 @@ type ActiveScheduleRecord = {
   id: string;
   routeId: string;
   busId: string;
-  driverId: string;
+  driverId: string | null;
   departureTime: Date;
   createdAt: Date;
   route: { id: string; routeName: string; isActive: boolean };
   bus: { id: string; busCode: string; isActive: boolean };
-  driver: { id: string; fullName: string; isActive: boolean };
+  driver: { id: string; fullName: string; isActive: boolean } | null;
 };
 
 type MaybeAutoStartFromTelematicsInput = {
@@ -58,7 +58,7 @@ type AutoStartResult = {
     id: string;
     routeId: string;
     busId: string;
-    driverId: string;
+    driverId: string | null;
     serviceScheduleId: string | null;
     activationMode: "MANUAL_DRIVER" | "AUTO_TELEMATICS" | "MANUAL_ADMIN";
   } | null;
@@ -137,7 +137,9 @@ async function findBestScheduleForBusAtTime(busId: string, at: Date) {
       isActive: true,
       route: { isActive: true },
       bus: { isActive: true },
-      driver: { isActive: true },
+      // A driver-less schedule (GPS-only bus) is valid; if a driver is
+      // assigned we still require that driver to be active.
+      OR: [{ driverId: null }, { driver: { isActive: true } }],
     },
     include: {
       route: true,

@@ -29,7 +29,7 @@ export async function listActiveTrips(_req: Request, res: Response) {
         busId: trip.busId,
         busLabel: trip.bus.busCode,
         driverId: trip.driverId,
-        driverName: trip.driver.fullName,
+        driverName: trip.driver?.fullName ?? null,
         status: trip.status,
         startedAt: trip.startTime?.toISOString() ?? null,
       })),

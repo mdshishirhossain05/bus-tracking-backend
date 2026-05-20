@@ -26,10 +26,13 @@ export const listServiceSchedulesQuerySchema = z.object({
   search: z.string().trim().optional(),
 });
 
+// driverId is optional at the schema level. The schedule service rejects the
+// request when no driver is provided AND the bus has no active GPS device
+// assignment — so every schedule still has *some* way to be tracked.
 export const createServiceScheduleSchema = z.object({
   routeId: z.string().uuid(),
   busId: z.string().uuid(),
-  driverId: z.string().uuid(),
+  driverId: z.string().uuid().nullable().optional(),
   dayType: serviceDayTypeEnum,
   departureTime: z.string().regex(timeRegex, "Use HH:mm or HH:mm:ss format"),
   isActive: z.boolean().optional().default(true),
@@ -39,7 +42,7 @@ export const createServiceScheduleSchema = z.object({
 export const updateServiceScheduleSchema = z.object({
   routeId: z.string().uuid().optional(),
   busId: z.string().uuid().optional(),
-  driverId: z.string().uuid().optional(),
+  driverId: z.string().uuid().nullable().optional(),
   dayType: serviceDayTypeEnum.optional(),
   departureTime: z
     .string()

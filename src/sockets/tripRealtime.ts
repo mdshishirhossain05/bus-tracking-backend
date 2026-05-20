@@ -6,7 +6,7 @@ export type TripStartedRealtimePayload = {
   tripId: string;
   routeId: string;
   busId: string;
-  driverId: string;
+  driverId: string | null;
   status: string;
   startedAt: string;
 };
@@ -15,7 +15,7 @@ export type TripLocationRealtimePayload = {
   tripId: string;
   routeId: string;
   busId: string;
-  driverId: string;
+  driverId: string | null;
   lat: number;
   lng: number;
   speedKmh: number | null;
@@ -64,7 +64,7 @@ export type TripStopArrivalRealtimePayload = {
   tripId: string;
   routeId: string;
   busId: string;
-  driverId: string;
+  driverId: string | null;
   stopId: string;
   stopName: string;
   stopOrder: number;
@@ -82,7 +82,7 @@ export type TripEndedRealtimePayload = {
   tripId: string;
   routeId: string;
   busId: string;
-  driverId: string;
+  driverId: string | null;
   status: string;
   endedAt: string;
   endMode?: "MANUAL_DRIVER" | "AUTO_TELEMATICS" | "MANUAL_ADMIN" | "SYSTEM";
