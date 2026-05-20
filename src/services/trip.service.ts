@@ -63,6 +63,7 @@ type RunningTripRecord = {
     | null;
   lastTrackingSourceLabel?: string | null;
   lastTrackingSourceRecordedAt?: Date | null;
+  preferredTrackingSourceType?: "DRIVER_MOBILE" | "GPS_DEVICE" | null;
 };
 
 type PlannedScheduleRecord = {
@@ -99,6 +100,7 @@ export type TripCreateFromScheduleInput = {
   startedAt: Date;
   activationMode: TripActivationModeValue;
   startedByGpsDeviceId?: string | null;
+  preferredTrackingSourceType?: "DRIVER_MOBILE" | "GPS_DEVICE" | null;
 };
 
 function decimalToNumber(
@@ -424,8 +426,23 @@ async function buildEtaForTrip(
   return null;
 }
 
+async function busHasActiveGpsDevice(busId: string): Promise<boolean> {
+  const assignment = await prisma.busGpsDeviceAssignment.findFirst({
+    where: {
+      busId,
+      isActive: true,
+      unassignedAt: null,
+    },
+    select: { id: true },
+  });
+  return Boolean(assignment);
+}
+
 async function mapTrip(trip: RunningTripRecord) {
-  const liveState = await buildLiveStateForTrip(trip);
+  const [liveState, gpsAssigned] = await Promise.all([
+    buildLiveStateForTrip(trip),
+    busHasActiveGpsDevice(trip.busId),
+  ]);
   const eta = await buildEtaForTrip(trip, liveState);
 
   return {
@@ -445,6 +462,8 @@ async function mapTrip(trip: RunningTripRecord) {
     departureTime: null,
     activationMode: trip.activationMode ?? "MANUAL_DRIVER",
     startedByGpsDeviceId: trip.startedByGpsDeviceId ?? null,
+    preferredTrackingSourceType: trip.preferredTrackingSourceType ?? null,
+    busHasActiveGpsDevice: gpsAssigned,
     liveState,
     eta,
   };
@@ -453,6 +472,14 @@ async function mapTrip(trip: RunningTripRecord) {
 export async function createTripFromServiceSchedule(
   input: TripCreateFromScheduleInput,
 ) {
+  // Effective initial source: AUTO_TELEMATICS implies GPS. Otherwise honour
+  // an explicit driver preference if provided. Default to DRIVER_MOBILE for
+  // manual driver/admin starts on driver-tracked buses.
+  const initialSourceType =
+    input.activationMode === "AUTO_TELEMATICS"
+      ? "GPS_DEVICE"
+      : (input.preferredTrackingSourceType ?? "DRIVER_MOBILE");
+
   const trip = await prisma.trip.create({
     data: {
       driverId: input.driverId,
@@ -464,17 +491,13 @@ export async function createTripFromServiceSchedule(
       isStale: false,
       activationMode: input.activationMode,
       startedByGpsDeviceId: input.startedByGpsDeviceId ?? null,
-      lastTrackingSourceType:
-        input.activationMode === "AUTO_TELEMATICS"
-          ? "GPS_DEVICE"
-          : "DRIVER_MOBILE",
+      preferredTrackingSourceType: input.preferredTrackingSourceType ?? null,
+      lastTrackingSourceType: initialSourceType,
       lastTrackingSourceStatus: "HEALTHY",
       lastTrackingSelectionReason:
-        input.activationMode === "AUTO_TELEMATICS" ? "GPS_ONLY" : "DRIVER_ONLY",
+        initialSourceType === "GPS_DEVICE" ? "GPS_ONLY" : "DRIVER_ONLY",
       lastTrackingSourceLabel:
-        input.activationMode === "AUTO_TELEMATICS"
-          ? "GPS Device"
-          : "Driver Mobile",
+        initialSourceType === "GPS_DEVICE" ? "GPS Device" : "Driver Mobile",
       lastTrackingSourceRecordedAt: input.startedAt,
     },
     include: {
@@ -514,10 +537,12 @@ export async function createTripFromServiceSchedule(
 export async function startTripService({
   driverId,
   idempotencyKey,
+  preferredSourceType,
   req,
 }: {
   driverId: string;
   idempotencyKey: string;
+  preferredSourceType: "DRIVER_MOBILE" | "GPS_DEVICE" | null;
   req: Request;
 }) {
   const fingerprint = buildFingerprint({
@@ -647,6 +672,30 @@ export async function startTripService({
         });
       }
 
+      // If the driver requested GPS_DEVICE as the source, the bus must
+      // actually have an active GPS-device assignment — otherwise the trip
+      // would have no live source.
+      if (preferredSourceType === "GPS_DEVICE") {
+        const gpsAssignment = await prisma.busGpsDeviceAssignment.findFirst({
+          where: {
+            busId: schedule.busId,
+            isActive: true,
+            unassignedAt: null,
+          },
+          select: { id: true },
+        });
+
+        if (!gpsAssignment) {
+          await failIdempotentRequest(idempotencyKey);
+          throw new AppError({
+            statusCode: 400,
+            code: "BUS_HAS_NO_GPS_DEVICE",
+            message:
+              "GPS device is not assigned to this bus. Select 'Driver mobile' as the source, or assign a GPS device first.",
+          });
+        }
+      }
+
       const startedAt = new Date();
 
       const created = await createTripFromServiceSchedule({
@@ -657,6 +706,7 @@ export async function startTripService({
         startedAt,
         activationMode: "MANUAL_DRIVER",
         startedByGpsDeviceId: null,
+        preferredTrackingSourceType: preferredSourceType,
       });
 
       await writeAuditLog({
@@ -747,6 +797,8 @@ export async function getCurrentDriverTripService(driverId: string) {
     return null;
   }
 
+  const gpsAssigned = await busHasActiveGpsDevice(schedule.busId);
+
   return {
     tripId: null,
     isPlanned: true,
@@ -764,6 +816,8 @@ export async function getCurrentDriverTripService(driverId: string) {
     departureTime: schedule.departureTime.toISOString(),
     activationMode: null,
     startedByGpsDeviceId: null,
+    preferredTrackingSourceType: null,
+    busHasActiveGpsDevice: gpsAssigned,
     liveState: null,
     eta: null,
   };

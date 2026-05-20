@@ -5,6 +5,13 @@ export const startTripSchema = z.object({
   routeId: z.string().uuid(),
 });
 
+// Optional body the driver client sends when starting a trip on a bus that
+// also has a GPS device — lets the driver pick which source to track with.
+// Omitted means "no explicit preference" (existing default behaviour).
+export const startTripBodySchema = z.object({
+  preferredSourceType: z.enum(["DRIVER_MOBILE", "GPS_DEVICE"]).optional(),
+});
+
 export const locationUpdateSchema = z.object({
   lat: z.number().min(-90).max(90),
   lng: z.number().min(-180).max(180),

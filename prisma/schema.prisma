@@ -408,6 +408,12 @@ model Trip {
   activationMode       TripActivationMode @default(MANUAL_DRIVER)
   startedByGpsDeviceId String?
 
+  // Driver's explicit tracking-source choice at start time. When set to
+  // GPS_DEVICE the driver phone deliberately stops publishing; when set to
+  // DRIVER_MOBILE it publishes even if a GPS device is also assigned. Null
+  // means "no explicit preference" (auto-arbitrated).
+  preferredTrackingSourceType TrackingSourceType?
+
   lastLatitude   Decimal? @db.Decimal(10, 7)
   lastLongitude  Decimal? @db.Decimal(10, 7)
   lastSpeedKmh   Decimal? @db.Decimal(6, 2)
