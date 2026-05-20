@@ -143,7 +143,10 @@ const envSchema = z.object({
     .positive()
     .default(300),
 
-  TELEMATICS_AUTO_START_ENABLED: z.coerce.boolean().default(false),
+  // Telematics auto-start is the only path to a hands-free, driverless
+  // (GPS-only) trip — auto-end already defaults to true, mirroring that here
+  // makes the GPS-device flow work out of the box.
+  TELEMATICS_AUTO_START_ENABLED: z.coerce.boolean().default(true),
   TELEMATICS_AUTO_START_REQUIRE_HEALTHY_SOURCE: z.coerce
     .boolean()
     .default(true),
