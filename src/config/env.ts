@@ -147,6 +147,14 @@ const envSchema = z.object({
   // (GPS-only) trip — auto-end already defaults to true, mirroring that here
   // makes the GPS-device flow work out of the box.
   TELEMATICS_AUTO_START_ENABLED: z.coerce.boolean().default(true),
+
+  // Pull positions from Traccar at this interval and feed them through the
+  // GPS ingest pipeline. Enabled by default — without this the hardware
+  // would only reach us if the operator manually configured a Traccar
+  // forwarder, which is fragile and a common source of "device shows
+  // online in Traccar but Never seen in our system" bugs.
+  TRACCAR_POLL_ENABLED: z.coerce.boolean().default(true),
+  TRACCAR_POLL_INTERVAL_MS: z.coerce.number().int().positive().default(8000),
   TELEMATICS_AUTO_START_REQUIRE_HEALTHY_SOURCE: z.coerce
     .boolean()
     .default(true),
