@@ -472,11 +472,12 @@ async function mapTrip(trip: RunningTripRecord) {
 export async function createTripFromServiceSchedule(
   input: TripCreateFromScheduleInput,
 ) {
-  // Effective initial source: AUTO_TELEMATICS implies GPS. Otherwise honour
-  // an explicit driver preference if provided. Default to DRIVER_MOBILE for
-  // manual driver/admin starts on driver-tracked buses.
+  // Effective initial source: AUTO_TELEMATICS implies GPS. A driverless
+  // schedule (no `driverId`) must also use GPS — there's no driver phone to
+  // publish from. Otherwise honour an explicit driver preference, falling
+  // back to DRIVER_MOBILE.
   const initialSourceType =
-    input.activationMode === "AUTO_TELEMATICS"
+    input.activationMode === "AUTO_TELEMATICS" || input.driverId == null
       ? "GPS_DEVICE"
       : (input.preferredTrackingSourceType ?? "DRIVER_MOBILE");
 
