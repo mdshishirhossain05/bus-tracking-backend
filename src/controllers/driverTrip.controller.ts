@@ -1,6 +1,9 @@
 import { Response } from "express";
 import { prisma } from "../config/prisma.js";
-import { locationUpdateSchema } from "../validators/trip.validators.js";
+import {
+  locationUpdateSchema,
+  startTripBodySchema,
+} from "../validators/trip.validators.js";
 import type { AuthRequest } from "../middlewares/auth.middleware.js";
 import { uuidParamSchema } from "../validators/params.validators.js";
 import {
@@ -61,9 +64,21 @@ export async function startTrip(req: AuthRequest, res: Response) {
     });
   }
 
+  // Body is optional. Drivers without a GPS-equipped bus send no body at all.
+  const parsedBody = startTripBodySchema.safeParse(req.body ?? {});
+  if (!parsedBody.success) {
+    throw new AppError({
+      statusCode: 400,
+      code: "VALIDATION_ERROR",
+      message: "Invalid start-trip body",
+      details: parsedBody.error.format(),
+    });
+  }
+
   const result = await startTripService({
     driverId,
     idempotencyKey,
+    preferredSourceType: parsedBody.data.preferredSourceType ?? null,
     req,
   });
 
