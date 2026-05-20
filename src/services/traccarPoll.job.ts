@@ -2,6 +2,7 @@ import { prisma } from "../config/prisma.js";
 import { env } from "../config/env.js";
 import { logger } from "../config/logger.js";
 import {
+  fetchTraccarDeviceById,
   fetchTraccarLatestPositionForDevice,
   isTraccarConfigured,
 } from "./traccar.service.js";
@@ -34,6 +35,7 @@ async function pollOnce() {
         id: true,
         deviceCode: true,
         traccarDeviceId: true,
+        lastSeenAt: true,
         lastRecordedAt: true,
       },
     });
@@ -42,14 +44,45 @@ async function pollOnce() {
 
     for (const device of devices) {
       try {
-        const position = await fetchTraccarLatestPositionForDevice(
-          device.traccarDeviceId!,
-        );
+        // Heartbeat (`lastUpdate` on the device record) and the latest GPS
+        // fix can diverge — the device might still be online with Traccar
+        // while its GPS chip hasn't produced a new fix in hours. Fetch
+        // both so we can update lastSeenAt independently of lastRecordedAt.
+        const [remoteDevice, position] = await Promise.all([
+          fetchTraccarDeviceById(device.traccarDeviceId!),
+          fetchTraccarLatestPositionForDevice(device.traccarDeviceId!),
+        ]);
+
+        // Update lastSeenAt from Traccar's heartbeat even when no new GPS
+        // fix arrived. Otherwise a stationary-but-online device drifts to
+        // OFFLINE simply because we stopped ingesting (the existing flow
+        // only updated lastSeenAt inside ingestGpsDeviceLocationService).
+        const heartbeatIso =
+          remoteDevice?.lastUpdate ?? position?.serverTime ?? null;
+        const heartbeatTime = heartbeatIso ? new Date(heartbeatIso) : null;
+        if (
+          heartbeatTime &&
+          !Number.isNaN(heartbeatTime.getTime()) &&
+          (!device.lastSeenAt ||
+            heartbeatTime.getTime() > device.lastSeenAt.getTime())
+        ) {
+          await prisma.gpsDevice.update({
+            where: { id: device.id },
+            data: { lastSeenAt: heartbeatTime },
+          });
+        }
 
         if (!position) continue;
 
+        // Prefer Traccar's `serverTime` (when Traccar received the packet)
+        // over the device-reported `fixTime`. Some device firmware — notably
+        // ConCox GT06 — reports fixTime without a UTC offset, so Traccar's
+        // fixTime can end up several hours behind real time even when the
+        // device is actively moving. ServerTime is monotonic and
+        // timezone-correct because it comes from Traccar's clock, not the
+        // device's clock.
         const fixIso =
-          position.fixTime ?? position.deviceTime ?? position.serverTime;
+          position.serverTime ?? position.fixTime ?? position.deviceTime;
         const fixTime = fixIso ? new Date(fixIso) : null;
         if (!fixTime || Number.isNaN(fixTime.getTime())) continue;
 
