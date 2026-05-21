@@ -305,6 +305,9 @@ export async function listAdminUsersService(query: ListAdminUsersQuery) {
         isActive: true,
         studentId: true,
         phoneNumber: true,
+        academicDepartment: true,
+        academicBatch: true,
+        transportPickupPoint: true,
         approvalStatus: true,
         registrationSource: true,
         createdAt: true,
@@ -338,6 +341,9 @@ export async function listAdminUsersService(query: ListAdminUsersQuery) {
         isActive: item.isActive,
         studentId: item.studentId,
         phoneNumber: item.phoneNumber,
+        academicDepartment: item.academicDepartment,
+        academicBatch: item.academicBatch,
+        transportPickupPoint: item.transportPickupPoint,
         approvalStatus: item.approvalStatus,
         registrationSource: item.registrationSource,
         createdAt: item.createdAt,
@@ -368,6 +374,9 @@ export async function getAdminUserByIdService(userId: string) {
       isActive: true,
       studentId: true,
       phoneNumber: true,
+      academicDepartment: true,
+      academicBatch: true,
+      transportPickupPoint: true,
       approvalStatus: true,
       registrationSource: true,
       approvedAt: true,
@@ -449,6 +458,9 @@ export async function createAdminUserService(input: CreateAdminUserInput) {
       isActive: true,
       studentId: true,
       phoneNumber: true,
+      academicDepartment: true,
+      academicBatch: true,
+      transportPickupPoint: true,
       approvalStatus: true,
       registrationSource: true,
       createdAt: true,
@@ -497,6 +509,15 @@ export async function updateAdminUserService(
       ...(input.phoneNumber !== undefined
         ? { phoneNumber: input.phoneNumber?.trim() || null }
         : {}),
+      ...(input.academicDepartment !== undefined
+        ? { academicDepartment: input.academicDepartment?.trim() || null }
+        : {}),
+      ...(input.academicBatch !== undefined
+        ? { academicBatch: input.academicBatch?.trim() || null }
+        : {}),
+      ...(input.transportPickupPoint !== undefined
+        ? { transportPickupPoint: input.transportPickupPoint?.trim() || null }
+        : {}),
     },
     select: {
       id: true,
@@ -506,6 +527,9 @@ export async function updateAdminUserService(
       isActive: true,
       studentId: true,
       phoneNumber: true,
+      academicDepartment: true,
+      academicBatch: true,
+      transportPickupPoint: true,
       approvalStatus: true,
       registrationSource: true,
       createdAt: true,
