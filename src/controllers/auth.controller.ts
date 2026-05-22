@@ -35,6 +35,17 @@ import {
 
 const PASSENGER_REGISTRATION_OTP_PURPOSE = "PASSENGER_REGISTRATION";
 
+/**
+ * Native (Expo) clients can't use httpOnly cookies, so when they identify
+ * themselves via `X-Client-Type: mobile` we also return the tokens in the
+ * response body. Browsers omit the header and keep the cookie-only flow, so
+ * web security is unchanged.
+ */
+function isMobileClient(req: Request): boolean {
+  const header = req.headers["x-client-type"];
+  return (typeof header === "string" ? header.toLowerCase() : "") === "mobile";
+}
+
 async function readRegistrationSettings() {
   return prisma.appConfig.upsert({
     where: { id: 1 },
@@ -558,28 +569,40 @@ export async function login(req: Request, res: Response) {
     },
   });
 
+  const loginData: Record<string, unknown> = {
+    user: {
+      id: user.id,
+      fullName: user.fullName,
+      email: user.email,
+      role: user.role,
+      isActive: user.isActive,
+      academicDepartment: user.academicDepartment,
+      academicBatch: user.academicBatch,
+      transportPickupPoint: user.transportPickupPoint,
+      approvalStatus: user.approvalStatus,
+      registrationSource: user.registrationSource,
+      createdAt: user.createdAt,
+    },
+  };
+
+  if (isMobileClient(req)) {
+    loginData.accessToken = tokens.accessToken;
+    loginData.refreshToken = tokens.refreshToken;
+  }
+
   return sendSuccess(res, {
     message: "Login successful",
-    data: {
-      user: {
-        id: user.id,
-        fullName: user.fullName,
-        email: user.email,
-        role: user.role,
-        isActive: user.isActive,
-        academicDepartment: user.academicDepartment,
-        academicBatch: user.academicBatch,
-        transportPickupPoint: user.transportPickupPoint,
-        approvalStatus: user.approvalStatus,
-        registrationSource: user.registrationSource,
-        createdAt: user.createdAt,
-      },
-    },
+    data: loginData,
   });
 }
 
 export async function refresh(req: Request, res: Response) {
-  const token = (req as any).cookies?.refresh_token;
+  const mobile = isMobileClient(req);
+  const bodyToken =
+    mobile && typeof (req.body as any)?.refreshToken === "string"
+      ? (req.body as any).refreshToken
+      : undefined;
+  const token = (req as any).cookies?.refresh_token || bodyToken;
 
   if (!token) {
     throw new AppError({
@@ -596,6 +619,12 @@ export async function refresh(req: Request, res: Response) {
 
     return sendSuccess(res, {
       message: "Token refreshed successfully",
+      data: mobile
+        ? {
+            accessToken: tokens.accessToken,
+            refreshToken: tokens.refreshToken,
+          }
+        : undefined,
     });
   } catch (err: unknown) {
     clearAuthCookies(res);
