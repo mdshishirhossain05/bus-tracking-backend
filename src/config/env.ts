@@ -143,6 +143,10 @@ const envSchema = z.object({
     .positive()
     .default(300),
 
+  // Optional Expo access token for the push API. Not required for low volume,
+  // but recommended once FCM/APNs credentials are configured for the app.
+  EXPO_ACCESS_TOKEN: z.string().optional(),
+
   // Telematics auto-start is the only path to a hands-free, driverless
   // (GPS-only) trip — auto-end already defaults to true, mirroring that here
   // makes the GPS-device flow work out of the box.

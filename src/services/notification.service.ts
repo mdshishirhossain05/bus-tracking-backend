@@ -1,6 +1,7 @@
 import { prisma } from "../config/prisma.js";
 import { getIO } from "../sockets/io.js";
 import { SOCKET_EVENTS, getUserRoom } from "../sockets/events.js";
+import { sendExpoPushToUsersService } from "./pushNotification.service.js";
 
 const MAX_LIST = 30;
 
@@ -79,12 +80,15 @@ export async function createArrivalNotificationsService(input: {
           ? " (on time)"
           : "";
 
+  const title = `Bus reached ${input.stopName}`;
+  const body = `A bus on ${routeName} just arrived at ${input.stopName}${delayText}.`;
+
   await prisma.notification.createMany({
     data: favorites.map((favorite) => ({
       userId: favorite.userId,
       type: "STOP_ARRIVAL",
-      title: `Bus reached ${input.stopName}`,
-      body: `A bus on ${routeName} just arrived at ${input.stopName}${delayText}.`,
+      title,
+      body,
       link: "/passenger/live",
     })),
   });
@@ -101,4 +105,14 @@ export async function createArrivalNotificationsService(input: {
     // Socket server not ready — persisted notifications are still delivered
     // on the next fetch.
   }
+
+  // Wake closed/backgrounded devices via Expo push (best-effort).
+  await sendExpoPushToUsersService(
+    favorites.map((favorite) => favorite.userId),
+    {
+      title,
+      body,
+      data: { type: "STOP_ARRIVAL", link: "/passenger/live", routeId: input.routeId },
+    },
+  ).catch(() => undefined);
 }
