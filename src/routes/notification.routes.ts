@@ -5,6 +5,8 @@ import {
   listNotifications,
   markAllNotificationsRead,
   markNotificationRead,
+  registerPushToken,
+  removePushToken,
 } from "../controllers/notification.controller.js";
 
 export const notificationRouter = Router();
@@ -35,4 +37,16 @@ notificationRouter.post(
   "/notifications/:id/read",
   asyncHandler(requireAuth),
   asyncHandler(markNotificationRead),
+);
+
+notificationRouter.post(
+  "/notifications/push-token",
+  asyncHandler(requireAuth),
+  asyncHandler(registerPushToken),
+);
+
+notificationRouter.delete(
+  "/notifications/push-token",
+  asyncHandler(requireAuth),
+  asyncHandler(removePushToken),
 );

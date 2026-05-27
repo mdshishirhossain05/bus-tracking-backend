@@ -8,6 +8,14 @@ export type StopPoint = {
   lng: unknown;
 };
 
+export type StopEta = {
+  stopId: string;
+  stopName: string;
+  stopOrder: number;
+  distanceMeters: number;
+  etaMinutes: number | null;
+};
+
 export type EtaResult = {
   nearestStop: {
     stopId: string;
@@ -26,6 +34,9 @@ export type EtaResult = {
   rollingAverageSpeedKmh: number | null;
   confidence: "HIGH" | "MEDIUM" | "LOW";
   finalStopReached: boolean;
+  // Cumulative ETA to every stop still ahead of the bus — lets a passenger get
+  // an exact estimate for their own chosen stop, not just the next one.
+  stopEtas: StopEta[];
 };
 
 type NormalizedStop = {
@@ -360,6 +371,7 @@ export function computeNextStopAndEta(opts: {
           : null,
       confidence: speedInfo.confidence,
       finalStopReached: true,
+      stopEtas: [],
     };
   }
 
@@ -460,6 +472,41 @@ export function computeNextStopAndEta(opts: {
         )
       : null;
 
+  // Cumulative ETA to each stop ahead of the bus, using the same along-route
+  // distance model as the next stop above.
+  const stopEtas: StopEta[] = [];
+  if (nextStopIndex != null && !finalStopReached) {
+    for (let j = nextStopIndex; j < orderedStops.length; j += 1) {
+      const stop = orderedStops[j]!;
+      const stopProgressMeters = cumulative[j] ?? routeTotalMeters;
+      const routeRemainingMeters = Math.max(
+        0,
+        stopProgressMeters - progress.progressMeters,
+      );
+      const directDistanceMeters = haversineMeters(
+        currentLat,
+        currentLng,
+        stop.lat,
+        stop.lng,
+      );
+      const distanceMeters =
+        directDistanceMeters <= arrivalRadiusMeters
+          ? directDistanceMeters
+          : clamp(routeRemainingMeters, directDistanceMeters, routeTotalMeters);
+      const minutes =
+        speedInfo.speed > 0
+          ? Math.max(1, Math.round((distanceMeters / 1000 / speedInfo.speed) * 60))
+          : null;
+      stopEtas.push({
+        stopId: stop.stopId,
+        stopName: stop.stopName,
+        stopOrder: stop.stopOrder,
+        distanceMeters: Math.round(distanceMeters),
+        etaMinutes: minutes,
+      });
+    }
+  }
+
   return {
     nearestStop: {
       stopId: nearest.s.stopId,
@@ -476,5 +523,6 @@ export function computeNextStopAndEta(opts: {
         : null,
     confidence: speedInfo.confidence,
     finalStopReached,
+    stopEtas,
   };
 }
