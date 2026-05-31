@@ -15,12 +15,14 @@ import { adminServiceScheduleRouter } from "./admin/serviceSchedule.routes.js";
 import { adminOperationsRouter } from "./admin/operations.routes.js";
 import { adminAuditLogRouter } from "./admin/auditLog.routes.js";
 import { adminAnalyticsRouter } from "./admin/analytics.routes.js";
+import { adminAlertRouter } from "./admin/alert.routes.js";
 
 import { driverTripRouter } from "./driver.trip.routes.js";
 import { gpsIngestRouter } from "./gps.ingest.routes.js";
 
 import { passengerTrackingRouter } from "./passenger.tracking.routes.js";
 import { passengerTripsRouter } from "./passenger.trips.routes.js";
+import { passengerCompanionRouter } from "./passenger.companion.routes.js";
 import { favoriteRouter } from "./favorite.routes.js";
 import { notificationRouter } from "./notification.routes.js";
 import { routePresentationRouter } from "./route.presentation.routes.js";
@@ -54,6 +56,7 @@ export function registerRoutes(app: Express) {
   app.use(apiBase, adminOperationsRouter);
   app.use(apiBase, adminAuditLogRouter);
   app.use(apiBase, adminAnalyticsRouter);
+  app.use(apiBase, adminAlertRouter);
 
   /**
    * Driver routes
@@ -70,6 +73,7 @@ export function registerRoutes(app: Express) {
    */
   app.use(apiBase, passengerTrackingRouter);
   app.use(apiBase, passengerTripsRouter);
+  app.use(apiBase, passengerCompanionRouter);
   app.use(apiBase, favoriteRouter);
   app.use(apiBase, notificationRouter);
 

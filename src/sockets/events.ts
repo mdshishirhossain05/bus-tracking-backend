@@ -17,6 +17,7 @@ export const SOCKET_EVENTS = {
   TRIP_ENDED: "trip:ended",
   PRE_TRIP_OPENED: "trip:pre_opened",
   PRE_TRIP_STATE_CHANGED: "trip:pre_state_changed",
+  OCCUPANCY_UPDATED: "trip:occupancy_updated",
 
   NOTIFICATION: "notification",
 } as const;
