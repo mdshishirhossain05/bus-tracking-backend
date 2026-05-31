@@ -4,8 +4,8 @@ import { sendSuccess } from "../utils/apiResponse.js";
 
 export async function listActiveTrips(_req: Request, res: Response) {
   const trips = await prisma.trip.findMany({
-    where: { status: "RUNNING" },
-    orderBy: { startTime: "desc" },
+    where: { status: { in: ["RUNNING", "PRE_TRIP"] } },
+    orderBy: [{ status: "desc" }, { startTime: "desc" }, { createdAt: "desc" }],
     select: {
       id: true,
       routeId: true,
@@ -13,6 +13,8 @@ export async function listActiveTrips(_req: Request, res: Response) {
       driverId: true,
       status: true,
       startTime: true,
+      preTripPhase: true,
+      preTripStartedAt: true,
       route: { select: { id: true, routeName: true } },
       bus: { select: { id: true, busCode: true, plateNumber: true } },
       driver: { select: { id: true, fullName: true } },
@@ -32,6 +34,8 @@ export async function listActiveTrips(_req: Request, res: Response) {
         driverName: trip.driver?.fullName ?? null,
         status: trip.status,
         startedAt: trip.startTime?.toISOString() ?? null,
+        preTripPhase: trip.preTripPhase ?? null,
+        preTripStartedAt: trip.preTripStartedAt?.toISOString() ?? null,
       })),
     },
   });

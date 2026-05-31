@@ -173,3 +173,52 @@ export function emitTripEnded(payload: TripEndedRealtimePayload) {
 
   io.to(getTripRoom(payload.tripId)).emit(SOCKET_EVENTS.TRIP_ENDED, payload);
 }
+
+export type TripPreTripPhase =
+  | "AT_DEPOT"
+  | "APPROACHING_ORIGIN"
+  | "AT_ORIGIN";
+
+export type TripPreTripOpenedRealtimePayload = {
+  tripId: string;
+  routeId: string;
+  busId: string;
+  driverId: string | null;
+  serviceScheduleId: string | null;
+  preTripPhase: TripPreTripPhase;
+  preTripStartedAt: string;
+  scheduledDepartureAt: string | null;
+};
+
+export type TripPreTripStateRealtimePayload = {
+  tripId: string;
+  routeId: string;
+  busId: string;
+  driverId: string | null;
+  preTripPhase: TripPreTripPhase;
+  distanceToOriginMeters: number | null;
+  originArrivedAt: string | null;
+  lat: number | null;
+  lng: number | null;
+  recordedAt: string | null;
+};
+
+export function emitTripPreTripOpened(
+  payload: TripPreTripOpenedRealtimePayload,
+) {
+  const io = getIO();
+  io.to(getTripRoom(payload.tripId)).emit(
+    SOCKET_EVENTS.PRE_TRIP_OPENED,
+    payload,
+  );
+}
+
+export function emitTripPreTripStateChanged(
+  payload: TripPreTripStateRealtimePayload,
+) {
+  const io = getIO();
+  io.to(getTripRoom(payload.tripId)).emit(
+    SOCKET_EVENTS.PRE_TRIP_STATE_CHANGED,
+    payload,
+  );
+}

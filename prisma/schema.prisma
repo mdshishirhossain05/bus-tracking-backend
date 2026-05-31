@@ -25,8 +25,15 @@ enum UserRegistrationSource {
 
 enum TripStatus {
   PLANNED
+  PRE_TRIP
   RUNNING
   ENDED
+}
+
+enum TripPreTripPhase {
+  AT_DEPOT
+  APPROACHING_ORIGIN
+  AT_ORIGIN
 }
 
 enum DayType {
@@ -89,6 +96,18 @@ enum TripActivationMode {
   MANUAL_ADMIN
 }
 
+enum OccupancyLevel {
+  LIGHT
+  MODERATE
+  FULL
+}
+
+enum ServiceAlertSeverity {
+  INFO
+  WARNING
+  CRITICAL
+}
+
 enum TraccarSyncStatus {
   UNLINKED
   LINKED
@@ -143,6 +162,15 @@ model User {
   rejectedAt           DateTime?
   rejectedByUserId     String?
   rejectionReason      String?
+
+  // Notification preferences. Quiet-hours minutes are 0..1439 (since
+  // local midnight) and may wrap (e.g. start=1320 (22:00) end=420 (07:00));
+  // notification dispatch handles the wraparound. Null start/end = no
+  // quiet hours configured.
+  notificationsEnabled Boolean @default(true)
+  quietHoursStartMin   Int?
+  quietHoursEndMin     Int?
+
   createdAt            DateTime               @default(now())
   updatedAt            DateTime               @updatedAt
 
@@ -154,6 +182,10 @@ model User {
   favoriteRoutes           FavoriteRoute[]
   notifications            Notification[]
   pushTokens               PushToken[]
+  stopSubscriptions        StopSubscription[]
+  routeVisits              RouteVisit[]
+  occupancyVotes           OccupancyVote[]
+  authoredAlerts           ServiceAlert[]        @relation("AlertsAuthored")
 
   @@index([isActive])
   @@index([role])
@@ -287,6 +319,9 @@ model Route {
   tripEvents       TripEvent[]
   serviceSchedules ServiceSchedule[]
   favoritedBy      FavoriteRoute[]
+  stopSubscriptions StopSubscription[]
+  routeVisits      RouteVisit[]
+  serviceAlerts    ServiceAlert[]
 
   @@index([isActive])
 }
@@ -302,6 +337,78 @@ model FavoriteRoute {
 
   @@unique([userId, routeId])
   @@index([userId])
+  @@index([routeId])
+}
+
+model StopSubscription {
+  id              String   @id @default(uuid())
+  userId          String
+  stopId          String
+  routeId         String
+  leadTimeMinutes Int      @default(5)
+  enabled         Boolean  @default(true)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  user  User  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  stop  Stop  @relation(fields: [stopId], references: [id], onDelete: Cascade)
+  route Route @relation(fields: [routeId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, stopId, routeId])
+  @@index([userId])
+  @@index([routeId, stopId, enabled])
+}
+
+model RouteVisit {
+  id              String   @id @default(uuid())
+  userId          String
+  routeId         String
+  tripId          String?
+  visitedAt       DateTime @default(now())
+  endedAt         DateTime?
+  durationSeconds Int?
+
+  user  User  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  route Route @relation(fields: [routeId], references: [id], onDelete: Cascade)
+  trip  Trip? @relation(fields: [tripId], references: [id], onDelete: SetNull)
+
+  @@index([userId, visitedAt])
+  @@index([routeId])
+  @@index([tripId])
+}
+
+model OccupancyVote {
+  id        String         @id @default(uuid())
+  tripId    String
+  userId    String
+  level     OccupancyLevel
+  createdAt DateTime       @default(now())
+  updatedAt DateTime       @updatedAt
+
+  trip Trip @relation(fields: [tripId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([tripId, userId])
+  @@index([tripId])
+}
+
+model ServiceAlert {
+  id              String               @id @default(uuid())
+  title           String
+  body            String
+  severity        ServiceAlertSeverity @default(INFO)
+  routeId         String?
+  validFrom       DateTime             @default(now())
+  validUntil      DateTime?
+  isActive        Boolean              @default(true)
+  createdAt       DateTime             @default(now())
+  updatedAt       DateTime             @updatedAt
+  createdByUserId String?
+
+  route     Route? @relation(fields: [routeId], references: [id], onDelete: SetNull)
+  createdBy User?  @relation("AlertsAuthored", fields: [createdByUserId], references: [id], onDelete: SetNull)
+
+  @@index([isActive, validFrom, validUntil])
   @@index([routeId])
 }
 
@@ -351,6 +458,7 @@ model Stop {
   routeStops   RouteStop[]
   schedules    Schedule[]
   stopArrivals StopArrival[]
+  subscriptions StopSubscription[]
 
   @@index([stopName])
   @@index([stopCode])
@@ -447,6 +555,16 @@ model Trip {
 
   autoEndDisabled Boolean @default(false)
 
+  // Pre-trip phase: opened by a scheduled job ~60 min before the trip's
+  // scheduled departure. preTripPhase is meaningful only while
+  // status = PRE_TRIP and is what passengers/drivers see as the human-readable
+  // bus state (parked / approaching / arrived at start). originArrivedAt
+  // records when the bus first entered the origin geofence; once it dwells
+  // long enough the trip auto-promotes to RUNNING.
+  preTripPhase     TripPreTripPhase?
+  preTripStartedAt DateTime?
+  originArrivedAt  DateTime?
+
   bus                Bus              @relation(fields: [busId], references: [id], onDelete: Restrict)
   route              Route            @relation(fields: [routeId], references: [id], onDelete: Restrict)
   driver             User?            @relation("DriverTrips", fields: [driverId], references: [id], onDelete: Restrict)
@@ -458,6 +576,8 @@ model Trip {
   events          TripEvent[]
   canonicalStates CanonicalTrackingState[]
   sourceStates    SourceTrackingState[]
+  routeVisits     RouteVisit[]
+  occupancyVotes  OccupancyVote[]
 
   @@index([busId])
   @@index([routeId])
@@ -470,6 +590,8 @@ model Trip {
   @@index([lastTrackingSourceStatus])
   @@index([activationMode])
   @@index([startedByGpsDeviceId])
+  @@index([preTripPhase])
+  @@index([serviceScheduleId, status])
 }
 
 model CanonicalTrackingState {

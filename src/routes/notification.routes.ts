@@ -7,6 +7,12 @@ import {
   markNotificationRead,
   registerPushToken,
   removePushToken,
+  getNotificationPreferences,
+  updateNotificationPreferences,
+  listStopSubscriptions,
+  upsertStopSubscription,
+  toggleStopSubscription,
+  deleteStopSubscription,
 } from "../controllers/notification.controller.js";
 
 export const notificationRouter = Router();
@@ -49,4 +55,40 @@ notificationRouter.delete(
   "/notifications/push-token",
   asyncHandler(requireAuth),
   asyncHandler(removePushToken),
+);
+
+notificationRouter.get(
+  "/notifications/preferences",
+  asyncHandler(requireAuth),
+  asyncHandler(getNotificationPreferences),
+);
+
+notificationRouter.put(
+  "/notifications/preferences",
+  asyncHandler(requireAuth),
+  asyncHandler(updateNotificationPreferences),
+);
+
+notificationRouter.get(
+  "/notifications/subscriptions",
+  asyncHandler(requireAuth),
+  asyncHandler(listStopSubscriptions),
+);
+
+notificationRouter.post(
+  "/notifications/subscriptions",
+  asyncHandler(requireAuth),
+  asyncHandler(upsertStopSubscription),
+);
+
+notificationRouter.put(
+  "/notifications/subscriptions/:routeId/:stopId",
+  asyncHandler(requireAuth),
+  asyncHandler(toggleStopSubscription),
+);
+
+notificationRouter.delete(
+  "/notifications/subscriptions/:routeId/:stopId",
+  asyncHandler(requireAuth),
+  asyncHandler(deleteStopSubscription),
 );

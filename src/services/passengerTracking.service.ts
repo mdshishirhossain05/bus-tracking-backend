@@ -187,11 +187,11 @@ export async function getLiveBusesByRouteService(routeId: string) {
   const trips = await prisma.trip.findMany({
     where: {
       routeId,
-      status: "RUNNING",
+      status: { in: ["RUNNING", "PRE_TRIP"] },
     },
-    orderBy: {
-      startTime: "desc",
-    },
+    // RUNNING > PRE_TRIP in enum declaration order; DESC surfaces live
+    // trips ahead of pre-trip placeholders for the same route.
+    orderBy: [{ status: "desc" }, { startTime: "desc" }, { createdAt: "desc" }],
     select: {
       id: true,
       serviceScheduleId: true,
@@ -201,6 +201,9 @@ export async function getLiveBusesByRouteService(routeId: string) {
       status: true,
       startTime: true,
       endTime: true,
+      preTripPhase: true,
+      preTripStartedAt: true,
+      originArrivedAt: true,
       lastLatitude: true,
       lastLongitude: true,
       lastSpeedKmh: true,
@@ -270,6 +273,9 @@ export async function getLiveBusesByRouteService(routeId: string) {
         status: trip.status,
         startedAt: trip.startTime?.toISOString() ?? null,
         endedAt: trip.endTime?.toISOString() ?? null,
+        preTripPhase: trip.preTripPhase ?? null,
+        preTripStartedAt: trip.preTripStartedAt?.toISOString() ?? null,
+        originArrivedAt: trip.originArrivedAt?.toISOString() ?? null,
         isStale: trip.isStale,
         bus: {
           id: trip.bus.id,
@@ -326,6 +332,9 @@ export async function getLiveTripStateService(tripId: string) {
       lastTrackingSourceStatus: true,
       lastTrackingSelectionReason: true,
       lastTrackingSourceLabel: true,
+      preTripPhase: true,
+      preTripStartedAt: true,
+      originArrivedAt: true,
       bus: {
         select: {
           id: true,
@@ -393,6 +402,9 @@ export async function getLiveTripStateService(tripId: string) {
       status: trip.status,
       startedAt: trip.startTime?.toISOString() ?? null,
       endedAt: trip.endTime?.toISOString() ?? null,
+      preTripPhase: trip.preTripPhase ?? null,
+      preTripStartedAt: trip.preTripStartedAt?.toISOString() ?? null,
+      originArrivedAt: trip.originArrivedAt?.toISOString() ?? null,
       isStale: trip.isStale,
     },
     route: {
