@@ -22,6 +22,7 @@ import { arbitrateTripTrackingSource } from "./sourceArbitration.service.js";
 import { maybeAutoEndTripService } from "./tripLifecycle.service.js";
 import { applyPreTripLocationUpdate } from "./preTripPhase.service.js";
 import { promotePreTripToRunning } from "./preTripPromotion.service.js";
+import { triggerStopApproachAlertsService } from "./stopAlerts.service.js";
 import { AppError } from "../utils/appError.js";
 
 /**
@@ -225,6 +226,14 @@ async function recomputeAndPublishEta(params: {
       nearestStopDistanceMeters: eta.nearestStop.distanceMeters,
     },
   });
+
+  // Smart stop-approach pushes — fire-and-forget so the hot ETA path never
+  // blocks on Redis/Postgres for a feature that's strictly best-effort.
+  void triggerStopApproachAlertsService({
+    tripId,
+    routeId,
+    stopEtas: eta.stopEtas,
+  }).catch(() => undefined);
 
   return eta;
 }

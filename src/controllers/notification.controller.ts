@@ -12,6 +12,16 @@ import {
   registerPushTokenService,
   removePushTokenService,
 } from "../services/pushNotification.service.js";
+import {
+  getNotificationPreferencesService,
+  updateNotificationPreferencesService,
+} from "../services/notificationPreferences.service.js";
+import {
+  deleteStopSubscriptionService,
+  listStopSubscriptionsService,
+  toggleStopSubscriptionService,
+  upsertStopSubscriptionService,
+} from "../services/stopSubscription.service.js";
 
 function requireUserId(req: AuthRequest): string {
   const userId = req.user?.id;
@@ -107,6 +117,133 @@ export async function removePushToken(req: AuthRequest, res: Response) {
   }
   return sendSuccess(res, {
     message: "Push token removed",
+    data: { removed: true },
+  });
+}
+
+export async function getNotificationPreferences(
+  req: AuthRequest,
+  res: Response,
+) {
+  const data = await getNotificationPreferencesService(requireUserId(req));
+  return sendSuccess(res, {
+    message: "Notification preferences fetched",
+    data,
+  });
+}
+
+export async function updateNotificationPreferences(
+  req: AuthRequest,
+  res: Response,
+) {
+  const body = req.body ?? {};
+  const data = await updateNotificationPreferencesService(requireUserId(req), {
+    notificationsEnabled:
+      typeof body.notificationsEnabled === "boolean"
+        ? body.notificationsEnabled
+        : undefined,
+    quietHoursStartMin:
+      body.quietHoursStartMin === null
+        ? null
+        : typeof body.quietHoursStartMin === "number"
+          ? body.quietHoursStartMin
+          : undefined,
+    quietHoursEndMin:
+      body.quietHoursEndMin === null
+        ? null
+        : typeof body.quietHoursEndMin === "number"
+          ? body.quietHoursEndMin
+          : undefined,
+  });
+  return sendSuccess(res, {
+    message: "Notification preferences updated",
+    data,
+  });
+}
+
+export async function listStopSubscriptions(req: AuthRequest, res: Response) {
+  const items = await listStopSubscriptionsService(requireUserId(req));
+  return sendSuccess(res, {
+    message: "Stop subscriptions fetched",
+    data: { items },
+  });
+}
+
+export async function upsertStopSubscription(
+  req: AuthRequest,
+  res: Response,
+) {
+  const body = req.body ?? {};
+  const stopId = typeof body.stopId === "string" ? body.stopId : "";
+  const routeId = typeof body.routeId === "string" ? body.routeId : "";
+  if (!stopId || !routeId) {
+    throw new AppError({
+      statusCode: 400,
+      code: "INVALID_BODY",
+      message: "stopId and routeId are required",
+    });
+  }
+  const leadTimeMinutes =
+    typeof body.leadTimeMinutes === "number" ? body.leadTimeMinutes : undefined;
+  const subscription = await upsertStopSubscriptionService(requireUserId(req), {
+    stopId,
+    routeId,
+    leadTimeMinutes,
+  });
+  return sendSuccess(res, {
+    message: "Stop subscription saved",
+    data: subscription,
+  });
+}
+
+function paramString(value: unknown): string | null {
+  return typeof value === "string" && value.length > 0 ? value : null;
+}
+
+export async function toggleStopSubscription(
+  req: AuthRequest,
+  res: Response,
+) {
+  const userId = requireUserId(req);
+  const stopId = paramString(req.params.stopId);
+  const routeId = paramString(req.params.routeId);
+  const enabled = req.body?.enabled !== false;
+  if (!stopId || !routeId) {
+    throw new AppError({
+      statusCode: 400,
+      code: "INVALID_PARAMS",
+      message: "stopId and routeId path params are required",
+    });
+  }
+  const subscription = await toggleStopSubscriptionService(
+    userId,
+    stopId,
+    routeId,
+    enabled,
+  );
+  return sendSuccess(res, {
+    message: "Stop subscription updated",
+    data: subscription,
+  });
+}
+
+export async function deleteStopSubscription(
+  req: AuthRequest,
+  res: Response,
+) {
+  const userId = requireUserId(req);
+  const stopId = paramString(req.params.stopId);
+  const routeId = paramString(req.params.routeId);
+  if (!stopId || !routeId) {
+    throw new AppError({
+      statusCode: 400,
+      code: "INVALID_PARAMS",
+      message: "stopId and routeId path params are required",
+    });
+  }
+  await deleteStopSubscriptionService(userId, stopId, routeId);
+  return sendSuccess(res, {
+    message: "Stop subscription removed",
     data: { removed: true },
   });
 }

@@ -150,6 +150,15 @@ model User {
   rejectedAt           DateTime?
   rejectedByUserId     String?
   rejectionReason      String?
+
+  // Notification preferences. Quiet-hours minutes are 0..1439 (since
+  // local midnight) and may wrap (e.g. start=1320 (22:00) end=420 (07:00));
+  // notification dispatch handles the wraparound. Null start/end = no
+  // quiet hours configured.
+  notificationsEnabled Boolean @default(true)
+  quietHoursStartMin   Int?
+  quietHoursEndMin     Int?
+
   createdAt            DateTime               @default(now())
   updatedAt            DateTime               @updatedAt
 
@@ -161,6 +170,7 @@ model User {
   favoriteRoutes           FavoriteRoute[]
   notifications            Notification[]
   pushTokens               PushToken[]
+  stopSubscriptions        StopSubscription[]
 
   @@index([isActive])
   @@index([role])
@@ -294,6 +304,7 @@ model Route {
   tripEvents       TripEvent[]
   serviceSchedules ServiceSchedule[]
   favoritedBy      FavoriteRoute[]
+  stopSubscriptions StopSubscription[]
 
   @@index([isActive])
 }
@@ -310,6 +321,25 @@ model FavoriteRoute {
   @@unique([userId, routeId])
   @@index([userId])
   @@index([routeId])
+}
+
+model StopSubscription {
+  id              String   @id @default(uuid())
+  userId          String
+  stopId          String
+  routeId         String
+  leadTimeMinutes Int      @default(5)
+  enabled         Boolean  @default(true)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  user  User  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  stop  Stop  @relation(fields: [stopId], references: [id], onDelete: Cascade)
+  route Route @relation(fields: [routeId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, stopId, routeId])
+  @@index([userId])
+  @@index([routeId, stopId, enabled])
 }
 
 model Notification {
@@ -358,6 +388,7 @@ model Stop {
   routeStops   RouteStop[]
   schedules    Schedule[]
   stopArrivals StopArrival[]
+  subscriptions StopSubscription[]
 
   @@index([stopName])
   @@index([stopCode])
