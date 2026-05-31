@@ -25,8 +25,15 @@ enum UserRegistrationSource {
 
 enum TripStatus {
   PLANNED
+  PRE_TRIP
   RUNNING
   ENDED
+}
+
+enum TripPreTripPhase {
+  AT_DEPOT
+  APPROACHING_ORIGIN
+  AT_ORIGIN
 }
 
 enum DayType {
@@ -447,6 +454,16 @@ model Trip {
 
   autoEndDisabled Boolean @default(false)
 
+  // Pre-trip phase: opened by a scheduled job ~60 min before the trip's
+  // scheduled departure. preTripPhase is meaningful only while
+  // status = PRE_TRIP and is what passengers/drivers see as the human-readable
+  // bus state (parked / approaching / arrived at start). originArrivedAt
+  // records when the bus first entered the origin geofence; once it dwells
+  // long enough the trip auto-promotes to RUNNING.
+  preTripPhase     TripPreTripPhase?
+  preTripStartedAt DateTime?
+  originArrivedAt  DateTime?
+
   bus                Bus              @relation(fields: [busId], references: [id], onDelete: Restrict)
   route              Route            @relation(fields: [routeId], references: [id], onDelete: Restrict)
   driver             User?            @relation("DriverTrips", fields: [driverId], references: [id], onDelete: Restrict)
@@ -470,6 +487,8 @@ model Trip {
   @@index([lastTrackingSourceStatus])
   @@index([activationMode])
   @@index([startedByGpsDeviceId])
+  @@index([preTripPhase])
+  @@index([serviceScheduleId, status])
 }
 
 model CanonicalTrackingState {

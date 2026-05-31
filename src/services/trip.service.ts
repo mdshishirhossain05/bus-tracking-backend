@@ -20,6 +20,7 @@ import { getStopsForTrip } from "./tripStopsCache.service.js";
 import { computeNextStopAndEta } from "./eta.service.js";
 import { env } from "../config/env.js";
 import { getLatestArrivedStopForTrip } from "./stopArrivalProgress.service.js";
+import { promotePreTripToRunning } from "./preTripPromotion.service.js";
 
 type RunningTripRecord = {
   id: string;
@@ -64,6 +65,9 @@ type RunningTripRecord = {
   lastTrackingSourceLabel?: string | null;
   lastTrackingSourceRecordedAt?: Date | null;
   preferredTrackingSourceType?: "DRIVER_MOBILE" | "GPS_DEVICE" | null;
+  preTripPhase?: "AT_DEPOT" | "APPROACHING_ORIGIN" | "AT_ORIGIN" | null;
+  preTripStartedAt?: Date | null;
+  originArrivedAt?: Date | null;
 };
 
 type PlannedScheduleRecord = {
@@ -466,6 +470,9 @@ async function mapTrip(trip: RunningTripRecord) {
     busHasActiveGpsDevice: gpsAssigned,
     liveState,
     eta,
+    preTripPhase: trip.preTripPhase ?? null,
+    preTripStartedAt: trip.preTripStartedAt?.toISOString() ?? null,
+    originArrivedAt: trip.originArrivedAt?.toISOString() ?? null,
   };
 }
 
@@ -580,23 +587,26 @@ export async function startTripService({
   }
 
   try {
-    const alreadyRunningForDriver = await prisma.trip.findFirst({
+    const existingForDriver = await prisma.trip.findFirst({
       where: {
         driverId,
-        status: "RUNNING",
+        status: { in: ["RUNNING", "PRE_TRIP"] },
       },
       include: {
         route: true,
         bus: true,
         driver: true,
       },
-      orderBy: {
-        startTime: "desc",
-      },
+      // RUNNING (later in enum order) wins over PRE_TRIP when both exist
+      orderBy: [
+        { status: "desc" },
+        { startTime: "desc" },
+        { createdAt: "desc" },
+      ],
     });
 
-    if (alreadyRunningForDriver) {
-      const mapped = await mapTrip(alreadyRunningForDriver);
+    if (existingForDriver && existingForDriver.status === "RUNNING") {
+      const mapped = await mapTrip(existingForDriver);
 
       const responseBody = {
         success: true,
@@ -613,6 +623,53 @@ export async function startTripService({
 
       return {
         statusCode: 200,
+        body: responseBody,
+      };
+    }
+
+    if (existingForDriver && existingForDriver.status === "PRE_TRIP") {
+      // The driver tapped Start while a pre-trip trip was already open
+      // (created earlier by the pre-trip window job). Promote it in place
+      // so we don't end up with two trips for the same schedule, and
+      // apply the driver's source preference if they provided one.
+      if (preferredSourceType) {
+        await prisma.trip.update({
+          where: { id: existingForDriver.id },
+          data: { preferredTrackingSourceType: preferredSourceType },
+        });
+      }
+
+      const promoted = await promotePreTripToRunning({
+        tripId: existingForDriver.id,
+        startedAt: new Date(),
+        activationMode: "MANUAL_DRIVER",
+        reason: "MANUAL_START_FROM_PRE_TRIP",
+      });
+
+      const refreshed = await prisma.trip.findUnique({
+        where: { id: existingForDriver.id },
+        include: { route: true, bus: true, driver: true },
+      });
+
+      const mapped = refreshed ? await mapTrip(refreshed) : null;
+
+      const responseBody = {
+        success: true,
+        message: promoted.promoted
+          ? "Trip started successfully"
+          : "Trip already running",
+        data: mapped,
+      };
+
+      await completeIdempotentRequest({
+        idempotencyKey,
+        fingerprint,
+        statusCode: promoted.promoted ? 201 : 200,
+        body: responseBody,
+      });
+
+      return {
+        statusCode: promoted.promoted ? 201 : 200,
         body: responseBody,
       };
     }
@@ -773,23 +830,27 @@ export async function startTripService({
 }
 
 export async function getCurrentDriverTripService(driverId: string) {
-  const running = await prisma.trip.findFirst({
+  const activeOrPre = await prisma.trip.findFirst({
     where: {
       driverId,
-      status: "RUNNING",
+      status: { in: ["RUNNING", "PRE_TRIP"] },
     },
     include: {
       route: true,
       bus: true,
       driver: true,
     },
-    orderBy: {
-      startTime: "desc",
-    },
+    // Enum order is PLANNED, PRE_TRIP, RUNNING, ENDED — DESC prefers
+    // RUNNING over PRE_TRIP when both exist for the same driver.
+    orderBy: [{ status: "desc" }, { startTime: "desc" }, { createdAt: "desc" }],
   });
 
-  if (running) {
-    return mapTrip(running);
+  if (activeOrPre) {
+    const mapped = await mapTrip(activeOrPre);
+    return {
+      ...mapped,
+      canStart: activeOrPre.status === "PRE_TRIP",
+    };
   }
 
   const schedule = await findBestScheduleForDriverToday(driverId);
@@ -821,5 +882,8 @@ export async function getCurrentDriverTripService(driverId: string) {
     busHasActiveGpsDevice: gpsAssigned,
     liveState: null,
     eta: null,
+    preTripPhase: null,
+    preTripStartedAt: null,
+    originArrivedAt: null,
   };
 }

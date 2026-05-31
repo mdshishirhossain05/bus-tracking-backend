@@ -169,8 +169,10 @@ export async function getActiveRouteDashboard(req: Request, res: Response) {
   const routeId = routeIdParsed.data;
 
   const activeTrip = await prisma.trip.findFirst({
-    where: { routeId, status: "RUNNING" },
-    orderBy: { startTime: "desc" },
+    where: { routeId, status: { in: ["RUNNING", "PRE_TRIP"] } },
+    // status: asc gives PRE_TRIP < RUNNING alphabetically; flip so RUNNING
+    // wins when both exist (live trip preferred over pre-trip placeholder)
+    orderBy: [{ status: "desc" }, { startTime: "desc" }, { createdAt: "desc" }],
     select: { id: true },
   });
 

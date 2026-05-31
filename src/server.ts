@@ -22,6 +22,10 @@ import {
   startTraccarRealtime,
   stopTraccarRealtime,
 } from "./services/traccarRealtime.service.js";
+import {
+  startPreTripWindowJob,
+  stopPreTripWindowJob,
+} from "./services/preTripWindow.job.js";
 import { processDriverLocationUpdate } from "./services/driverLocation.service.js";
 import { locationUpdateSchema } from "./validators/trip.validators.js";
 import { uuidParamSchema } from "./validators/params.validators.js";
@@ -102,6 +106,15 @@ function startBackgroundServices() {
   }, 0);
 
   setTimeout(() => {
+    try {
+      startPreTripWindowJob();
+      serverLogger.info("pre-trip window job startup requested");
+    } catch (err) {
+      serverLogger.error({ err }, "pre-trip window job failed to start");
+    }
+  }, 0);
+
+  setTimeout(() => {
     void initializeSocketRedisAdapter().catch((err) => {
       serverLogger.error(
         { err },
@@ -139,6 +152,12 @@ async function shutdown(signal: string) {
       stopTraccarRealtime();
     } catch (err) {
       serverLogger.error({ err }, "failed stopping traccar realtime");
+    }
+
+    try {
+      stopPreTripWindowJob();
+    } catch (err) {
+      serverLogger.error({ err }, "failed stopping pre-trip window job");
     }
 
     if (httpServer) {

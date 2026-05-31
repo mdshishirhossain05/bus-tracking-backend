@@ -20,6 +20,8 @@ import { logEtaUpdated } from "./tripEvent.service.js";
 import { getLatestArrivedStopForTrip } from "./stopArrivalProgress.service.js";
 import { arbitrateTripTrackingSource } from "./sourceArbitration.service.js";
 import { maybeAutoEndTripService } from "./tripLifecycle.service.js";
+import { applyPreTripLocationUpdate } from "./preTripPhase.service.js";
+import { promotePreTripToRunning } from "./preTripPromotion.service.js";
 import { AppError } from "../utils/appError.js";
 
 /**
@@ -288,12 +290,15 @@ export async function processDriverLocationUpdate(params: {
     });
   }
 
-  if (trip.status !== "RUNNING") {
-    logger?.warn({ tripId, driverId }, "sendLocation on non-running trip");
+  if (trip.status !== "RUNNING" && trip.status !== "PRE_TRIP") {
+    logger?.warn(
+      { tripId, driverId, status: trip.status },
+      "sendLocation on non-acceptable trip status",
+    );
     throw new AppError({
       statusCode: 400,
-      code: "TRIP_NOT_RUNNING",
-      message: "Trip is not running",
+      code: "TRIP_NOT_ACCEPTING_LOCATION",
+      message: "Trip is not accepting location updates",
     });
   }
 
@@ -594,23 +599,70 @@ export async function processDriverLocationUpdate(params: {
     }
   }
 
-  const autoEndResult = await maybeAutoEndTripService({
-    tripId,
-    sourceType: selectedState.sourceType,
-    sourceStatus: selectedState.sourceStatus,
-    currentLat: selectedState.lat,
-    currentLng: selectedState.lng,
-    currentSpeedKmh: pickCurrentSpeedKmh({
-      sourceType: selectedState.sourceType,
-      rawSpeedKmh: selectedState.rawSpeedKmh,
-      speedKmh: selectedState.speedKmh,
-      displaySpeedKmh: selectedState.displaySpeedKmh,
-      averageSpeedKmh: selectedState.averageSpeedKmh,
-      isStationary: selectedState.isStationary,
-    }),
-    isStationary: selectedState.isStationary,
-    recordedAt: new Date(selectedState.recordedAt),
-  });
+  let preTripUpdate: Awaited<
+    ReturnType<typeof applyPreTripLocationUpdate>
+  > | null = null;
+  let preTripPromotedTripId: string | null = null;
+
+  if (trip.status === "PRE_TRIP") {
+    try {
+      preTripUpdate = await applyPreTripLocationUpdate({
+        tripId,
+        routeId: trip.routeId,
+        busId: trip.busId,
+        driverId: trip.driverId,
+        previousPhase: trip.preTripPhase ?? null,
+        originArrivedAt: trip.originArrivedAt ?? null,
+        lat: selectedState.lat,
+        lng: selectedState.lng,
+        speedKmh: pickCurrentSpeedKmh({
+          sourceType: selectedState.sourceType,
+          rawSpeedKmh: selectedState.rawSpeedKmh,
+          speedKmh: selectedState.speedKmh,
+          displaySpeedKmh: selectedState.displaySpeedKmh,
+          averageSpeedKmh: selectedState.averageSpeedKmh,
+          isStationary: selectedState.isStationary,
+        }),
+        recordedAt: new Date(selectedState.recordedAt),
+      });
+
+      if (preTripUpdate.shouldStartTrip) {
+        await promotePreTripToRunning({
+          tripId,
+          startedAt: new Date(selectedState.recordedAt),
+          activationMode: "AUTO_TELEMATICS",
+          reason: "AUTO_ORIGIN_GEOFENCE_DWELL",
+        });
+        preTripPromotedTripId = tripId;
+      }
+    } catch (err) {
+      logger?.warn(
+        { tripId, driverId, err },
+        "pre-trip phase update failed (non-fatal)",
+      );
+    }
+  }
+
+  const autoEndResult =
+    trip.status === "RUNNING" || preTripPromotedTripId
+      ? await maybeAutoEndTripService({
+          tripId,
+          sourceType: selectedState.sourceType,
+          sourceStatus: selectedState.sourceStatus,
+          currentLat: selectedState.lat,
+          currentLng: selectedState.lng,
+          currentSpeedKmh: pickCurrentSpeedKmh({
+            sourceType: selectedState.sourceType,
+            rawSpeedKmh: selectedState.rawSpeedKmh,
+            speedKmh: selectedState.speedKmh,
+            displaySpeedKmh: selectedState.displaySpeedKmh,
+            averageSpeedKmh: selectedState.averageSpeedKmh,
+            isStationary: selectedState.isStationary,
+          }),
+          isStationary: selectedState.isStationary,
+          recordedAt: new Date(selectedState.recordedAt),
+        })
+      : null;
 
   return {
     recordedAt: recordedAt.toISOString(),
@@ -619,6 +671,13 @@ export async function processDriverLocationUpdate(params: {
     reason: filtered.reason ?? null,
     arrival,
     autoEnd: autoEndResult,
+    preTrip: preTripUpdate
+      ? {
+          phase: preTripUpdate.newPhase,
+          distanceToOriginMeters: preTripUpdate.distanceToOriginMeters,
+          promotedToRunning: Boolean(preTripPromotedTripId),
+        }
+      : null,
     eta: latestEta
       ? {
           ...latestEta,

@@ -15,6 +15,8 @@ export const SOCKET_EVENTS = {
   STOP_ARRIVAL: "trip:stop_arrival",
   TRIP_STARTED: "trip:started",
   TRIP_ENDED: "trip:ended",
+  PRE_TRIP_OPENED: "trip:pre_opened",
+  PRE_TRIP_STATE_CHANGED: "trip:pre_state_changed",
 
   NOTIFICATION: "notification",
 } as const;

@@ -233,6 +233,34 @@ const envSchema = z.object({
   TRIP_STALE_JOB_INTERVAL_MS: z.coerce.number().int().positive().default(30000),
   TRIP_STALE_THRESHOLD_SECONDS: z.coerce.number().int().positive().default(60),
 
+  ENABLE_PRE_TRIP_WINDOW_JOB: z.coerce.boolean().default(true),
+  PRE_TRIP_WINDOW_JOB_INTERVAL_MS: z.coerce
+    .number()
+    .int()
+    .positive()
+    .default(30000),
+  PRE_TRIP_WINDOW_BEFORE_MINUTES: z.coerce
+    .number()
+    .int()
+    .positive()
+    .default(60),
+  PRE_TRIP_WINDOW_AFTER_MINUTES: z.coerce.number().int().positive().default(5),
+  PRE_TRIP_AUTO_CANCEL_AFTER_MINUTES: z.coerce
+    .number()
+    .int()
+    .positive()
+    .default(240),
+  PRE_TRIP_ORIGIN_GEOFENCE_METERS: z.coerce
+    .number()
+    .int()
+    .positive()
+    .default(120),
+  PRE_TRIP_ORIGIN_DWELL_MS: z.coerce.number().int().positive().default(30000),
+  PRE_TRIP_MOVING_THRESHOLD_KMH: z.coerce
+    .number()
+    .positive()
+    .default(4),
+
   GOOGLE_MAPS_SERVER_API_KEY: z.string().optional().default(""),
   GOOGLE_ROUTES_TIMEOUT_MS: z.coerce.number().int().positive().default(8000),
 
