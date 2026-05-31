@@ -15,6 +15,10 @@ import { logEtaUpdated } from "./tripEvent.service.js";
 import { maybeAutoStartTripFromTelematicsPacket } from "./telematicsLifecycle.service.js";
 import { maybeAutoEndTripService } from "./tripLifecycle.service.js";
 import { detectStopArrival } from "./arrival.service.js";
+import { applyPreTripLocationUpdate } from "./preTripPhase.service.js";
+import { promotePreTripToRunning } from "./preTripPromotion.service.js";
+import { triggerStopApproachAlertsService } from "./stopAlerts.service.js";
+import { logger } from "../config/logger.js";
 
 type JsonPrimitive = string | number | boolean | null;
 type JsonValue = JsonPrimitive | JsonValue[] | { [key: string]: JsonValue };
@@ -450,6 +454,15 @@ async function recomputeAndPublishEtaFromCanonical(params: {
     },
   });
 
+  // Same fire-and-forget stop-approach alerts the driver-mobile path fires
+  // from its own ETA recompute. Best-effort: a Redis hiccup here must not
+  // stall GPS ingestion.
+  void triggerStopApproachAlertsService({
+    tripId,
+    routeId,
+    stopEtas: eta.stopEtas,
+  }).catch(() => undefined);
+
   return eta;
 }
 
@@ -580,14 +593,18 @@ export async function ingestGpsDeviceLocationService(input: GpsIngestInput) {
     },
   });
 
-  const runningTripBeforeAutoStart = await prisma.trip.findFirst({
+  // Both RUNNING and PRE_TRIP count as "active" for the GPS ingest path
+  // now. PRE_TRIP rows are opened by the pre-trip window job (T-60min
+  // before scheduled departure); GPS packets that arrive against one of
+  // those rows feed the same phase derivation + auto-promote-on-dwell
+  // logic the driver-mobile path uses. Enum DESC ranks RUNNING above
+  // PRE_TRIP so a real running trip always wins.
+  const activeTripBeforeAutoStart = await prisma.trip.findFirst({
     where: {
       busId: assignment.busId,
-      status: "RUNNING",
+      status: { in: ["RUNNING", "PRE_TRIP"] },
     },
-    orderBy: {
-      startTime: "desc",
-    },
+    orderBy: [{ status: "desc" }, { startTime: "desc" }, { createdAt: "desc" }],
     select: {
       id: true,
       routeId: true,
@@ -596,6 +613,8 @@ export async function ingestGpsDeviceLocationService(input: GpsIngestInput) {
       startTime: true,
       activationMode: true,
       serviceScheduleId: true,
+      preTripPhase: true,
+      originArrivedAt: true,
     },
   });
 
@@ -633,7 +652,7 @@ export async function ingestGpsDeviceLocationService(input: GpsIngestInput) {
         isAccepted: true,
         sourceStatus,
         rawPayload: rawPayloadJson,
-        notes: runningTripBeforeAutoStart
+        notes: activeTripBeforeAutoStart
           ? "GPS packet accepted and linked to running trip"
           : "GPS packet accepted without running trip linkage",
       }),
@@ -662,11 +681,11 @@ export async function ingestGpsDeviceLocationService(input: GpsIngestInput) {
         },
       },
       update: {
-        tripId: runningTripBeforeAutoStart?.id ?? null,
+        tripId: activeTripBeforeAutoStart?.id ?? null,
         sourceStatus,
         sourceLabel,
         gpsDeviceId: input.gpsDeviceId,
-        driverId: runningTripBeforeAutoStart?.driverId ?? null,
+        driverId: activeTripBeforeAutoStart?.driverId ?? null,
         latitude: new Prisma.Decimal(smoothedPosition.lat),
         longitude: new Prisma.Decimal(smoothedPosition.lng),
         speedKmh: toDecimal(speedKmh),
@@ -683,12 +702,12 @@ export async function ingestGpsDeviceLocationService(input: GpsIngestInput) {
       },
       create: {
         busId: assignment.busId,
-        tripId: runningTripBeforeAutoStart?.id ?? null,
+        tripId: activeTripBeforeAutoStart?.id ?? null,
         sourceType: "GPS_DEVICE",
         sourceStatus,
         sourceLabel,
         gpsDeviceId: input.gpsDeviceId,
-        driverId: runningTripBeforeAutoStart?.driverId ?? null,
+        driverId: activeTripBeforeAutoStart?.driverId ?? null,
         latitude: new Prisma.Decimal(smoothedPosition.lat),
         longitude: new Prisma.Decimal(smoothedPosition.lng),
         speedKmh: toDecimal(speedKmh),
@@ -707,7 +726,7 @@ export async function ingestGpsDeviceLocationService(input: GpsIngestInput) {
   });
 
   const autoStartResult =
-    runningTripBeforeAutoStart == null
+    activeTripBeforeAutoStart == null
       ? await maybeAutoStartTripFromTelematicsPacket({
           gpsDeviceId: input.gpsDeviceId,
           deviceCode: input.deviceCode,
@@ -735,8 +754,8 @@ export async function ingestGpsDeviceLocationService(input: GpsIngestInput) {
         })
       : null;
 
-  const runningTrip =
-    runningTripBeforeAutoStart ??
+  const activeTrip =
+    activeTripBeforeAutoStart ??
     (autoStartResult?.trip
       ? {
           id: autoStartResult.trip.id,
@@ -749,15 +768,15 @@ export async function ingestGpsDeviceLocationService(input: GpsIngestInput) {
         }
       : null);
 
-  if (runningTrip && autoStartResult?.started) {
+  if (activeTrip && autoStartResult?.started) {
     await prisma.sourceTrackingState.updateMany({
       where: {
         busId: assignment.busId,
         sourceType: "GPS_DEVICE",
       },
       data: {
-        tripId: runningTrip.id,
-        driverId: runningTrip.driverId,
+        tripId: activeTrip.id,
+        driverId: activeTrip.driverId,
       },
     });
 
@@ -766,15 +785,15 @@ export async function ingestGpsDeviceLocationService(input: GpsIngestInput) {
         busId: assignment.busId,
       },
       data: {
-        tripId: runningTrip.id,
+        tripId: activeTrip.id,
       },
     });
   }
 
   const selectedState =
-    runningTrip != null
+    activeTrip != null
       ? await arbitrateTripTrackingSource({
-          tripId: runningTrip.id,
+          tripId: activeTrip.id,
           busId: assignment.busId,
         })
       : null;
@@ -785,14 +804,16 @@ export async function ingestGpsDeviceLocationService(input: GpsIngestInput) {
 
   let arrival: Awaited<ReturnType<typeof detectStopArrival>> | null = null;
 
-  if (runningTrip && selectedState) {
+  if (activeTrip && selectedState) {
     const selectedRecordedAt = new Date(selectedState.recordedAt);
 
+    // Live location is broadcast regardless of phase — PRE_TRIP riders
+    // want to see the bus moving in the depot / approach window too.
     emitTripLocationUpdated({
-      tripId: runningTrip.id,
-      routeId: runningTrip.routeId,
+      tripId: activeTrip.id,
+      routeId: activeTrip.routeId,
       busId: assignment.busId,
-      driverId: runningTrip.driverId,
+      driverId: activeTrip.driverId,
       lat: selectedState.lat,
       lng: selectedState.lng,
       speedKmh: pickCurrentSpeedKmh({
@@ -822,49 +843,100 @@ export async function ingestGpsDeviceLocationService(input: GpsIngestInput) {
       recordedAt: selectedState.recordedAt,
     });
 
-    arrival = await detectAndPublishGpsStopArrival({
-      tripId: runningTrip.id,
-      routeId: runningTrip.routeId,
-      busId: assignment.busId,
-      driverId: runningTrip.driverId,
-      currentLat: selectedState.lat,
-      currentLng: selectedState.lng,
-      recordedAt: selectedRecordedAt,
-    });
+    // PRE_TRIP-only: derive phase from this GPS fix and auto-promote to
+    // RUNNING once the bus dwells inside the origin geofence long enough.
+    // Mirrors the driver-mobile pipeline so GPS-only buses get the same
+    // pre-trip lifecycle as phone-tracked ones.
+    // Narrowed at the query level (the where filters to RUNNING/PRE_TRIP),
+    // but TripStatus is a wider enum so we accept that for the local var.
+    let promotedStatus: typeof activeTrip.status = activeTrip.status;
+    if (activeTrip.status === "PRE_TRIP") {
+      try {
+        const preTripResult = await applyPreTripLocationUpdate({
+          tripId: activeTrip.id,
+          routeId: activeTrip.routeId,
+          busId: assignment.busId,
+          driverId: activeTrip.driverId,
+          previousPhase: activeTrip.preTripPhase ?? null,
+          originArrivedAt: activeTrip.originArrivedAt ?? null,
+          lat: selectedState.lat,
+          lng: selectedState.lng,
+          speedKmh: pickCurrentSpeedKmh({
+            sourceType: selectedState.sourceType,
+            rawSpeedKmh: selectedState.rawSpeedKmh,
+            speedKmh: selectedState.speedKmh,
+            displaySpeedKmh: selectedState.displaySpeedKmh,
+            averageSpeedKmh: selectedState.averageSpeedKmh,
+            isStationary: selectedState.isStationary,
+          }),
+          recordedAt: selectedRecordedAt,
+        });
 
-    await recomputeAndPublishEtaFromCanonical({
-      tripId: runningTrip.id,
-      routeId: runningTrip.routeId,
-      busId: assignment.busId,
-      driverId: runningTrip.driverId,
-      sourceType: selectedState.sourceType,
-      rawSpeedKmh: selectedState.rawSpeedKmh,
-      speedKmh: selectedState.speedKmh,
-      displaySpeedKmh: selectedState.displaySpeedKmh,
-      rollingAverageSpeedKmh: selectedState.averageSpeedKmh,
-      isStationary: selectedState.isStationary,
-      currentLat: selectedState.lat,
-      currentLng: selectedState.lng,
-      updatedAt: selectedRecordedAt,
-    }).catch(() => null);
+        if (preTripResult.shouldStartTrip) {
+          await promotePreTripToRunning({
+            tripId: activeTrip.id,
+            startedAt: selectedRecordedAt,
+            activationMode: "AUTO_TELEMATICS",
+            reason: "AUTO_ORIGIN_GEOFENCE_DWELL_GPS",
+          });
+          promotedStatus = "RUNNING";
+        }
+      } catch (err) {
+        logger.warn(
+          { err, tripId: activeTrip.id },
+          "gps pre-trip phase update failed (non-fatal)",
+        );
+      }
+    }
 
-    autoEndResult = await maybeAutoEndTripService({
-      tripId: runningTrip.id,
-      sourceType: selectedState.sourceType,
-      sourceStatus: selectedState.sourceStatus,
-      currentLat: selectedState.lat,
-      currentLng: selectedState.lng,
-      currentSpeedKmh: pickCurrentSpeedKmh({
+    // Stop arrival / ETA / auto-end are RUNNING-only — they assume the
+    // bus is actually on its route. Pre-trip phase handles the
+    // "approaching origin" case via its own state machine.
+    if (promotedStatus === "RUNNING") {
+      arrival = await detectAndPublishGpsStopArrival({
+        tripId: activeTrip.id,
+        routeId: activeTrip.routeId,
+        busId: assignment.busId,
+        driverId: activeTrip.driverId,
+        currentLat: selectedState.lat,
+        currentLng: selectedState.lng,
+        recordedAt: selectedRecordedAt,
+      });
+
+      await recomputeAndPublishEtaFromCanonical({
+        tripId: activeTrip.id,
+        routeId: activeTrip.routeId,
+        busId: assignment.busId,
+        driverId: activeTrip.driverId,
         sourceType: selectedState.sourceType,
         rawSpeedKmh: selectedState.rawSpeedKmh,
         speedKmh: selectedState.speedKmh,
         displaySpeedKmh: selectedState.displaySpeedKmh,
-        averageSpeedKmh: selectedState.averageSpeedKmh,
+        rollingAverageSpeedKmh: selectedState.averageSpeedKmh,
         isStationary: selectedState.isStationary,
-      }),
-      isStationary: selectedState.isStationary,
-      recordedAt: selectedRecordedAt,
-    });
+        currentLat: selectedState.lat,
+        currentLng: selectedState.lng,
+        updatedAt: selectedRecordedAt,
+      }).catch(() => null);
+
+      autoEndResult = await maybeAutoEndTripService({
+        tripId: activeTrip.id,
+        sourceType: selectedState.sourceType,
+        sourceStatus: selectedState.sourceStatus,
+        currentLat: selectedState.lat,
+        currentLng: selectedState.lng,
+        currentSpeedKmh: pickCurrentSpeedKmh({
+          sourceType: selectedState.sourceType,
+          rawSpeedKmh: selectedState.rawSpeedKmh,
+          speedKmh: selectedState.speedKmh,
+          displaySpeedKmh: selectedState.displaySpeedKmh,
+          averageSpeedKmh: selectedState.averageSpeedKmh,
+          isStationary: selectedState.isStationary,
+        }),
+        isStationary: selectedState.isStationary,
+        recordedAt: selectedRecordedAt,
+      });
+    }
   }
 
   return {
@@ -880,15 +952,15 @@ export async function ingestGpsDeviceLocationService(input: GpsIngestInput) {
       busCode: assignment.bus.busCode,
       plateNumber: assignment.bus.plateNumber,
     },
-    linkedTrip: runningTrip
+    linkedTrip: activeTrip
       ? {
-          id: runningTrip.id,
-          routeId: runningTrip.routeId,
-          driverId: runningTrip.driverId,
-          status: runningTrip.status,
-          startedAt: runningTrip.startTime?.toISOString() ?? null,
+          id: activeTrip.id,
+          routeId: activeTrip.routeId,
+          driverId: activeTrip.driverId,
+          status: activeTrip.status,
+          startedAt: activeTrip.startTime?.toISOString() ?? null,
           activationMode:
-            "activationMode" in runningTrip ? runningTrip.activationMode : null,
+            "activationMode" in activeTrip ? activeTrip.activationMode : null,
         }
       : null,
     autoStart: autoStartResult

@@ -309,10 +309,14 @@ export async function maybeAutoStartTripFromTelematicsPacket(
     };
   }
 
-  const existingRunningTrip = await prisma.trip.findFirst({
+  // PRE_TRIP counts as "exists" — the pre-trip window job opens those
+  // rows ahead of departure, and `gpsIngest.service.ts` promotes them to
+  // RUNNING via origin-dwell phase derivation. We must not create a
+  // second trip here or there'd be two parallel rows for the same bus.
+  const existingActiveTrip = await prisma.trip.findFirst({
     where: {
       busId: input.busId,
-      status: "RUNNING",
+      status: { in: ["RUNNING", "PRE_TRIP"] },
     },
     select: {
       id: true,
@@ -321,23 +325,22 @@ export async function maybeAutoStartTripFromTelematicsPacket(
       driverId: true,
       serviceScheduleId: true,
       activationMode: true,
+      status: true,
     },
-    orderBy: {
-      startTime: "desc",
-    },
+    orderBy: [{ status: "desc" }, { startTime: "desc" }, { createdAt: "desc" }],
   });
 
-  if (existingRunningTrip) {
+  if (existingActiveTrip) {
     return {
       started: false,
       reason: "RUNNING_TRIP_EXISTS",
       trip: {
-        id: existingRunningTrip.id,
-        routeId: existingRunningTrip.routeId,
-        busId: existingRunningTrip.busId,
-        driverId: existingRunningTrip.driverId,
-        serviceScheduleId: existingRunningTrip.serviceScheduleId ?? null,
-        activationMode: existingRunningTrip.activationMode,
+        id: existingActiveTrip.id,
+        routeId: existingActiveTrip.routeId,
+        busId: existingActiveTrip.busId,
+        driverId: existingActiveTrip.driverId,
+        serviceScheduleId: existingActiveTrip.serviceScheduleId ?? null,
+        activationMode: existingActiveTrip.activationMode,
       },
     };
   }
@@ -418,10 +421,10 @@ export async function maybeAutoStartTripFromTelematicsPacket(
   }
 
   try {
-    const runningTripAfterLock = await prisma.trip.findFirst({
+    const activeTripAfterLock = await prisma.trip.findFirst({
       where: {
         busId: input.busId,
-        status: "RUNNING",
+        status: { in: ["RUNNING", "PRE_TRIP"] },
       },
       select: {
         id: true,
@@ -430,23 +433,26 @@ export async function maybeAutoStartTripFromTelematicsPacket(
         driverId: true,
         serviceScheduleId: true,
         activationMode: true,
+        status: true,
       },
-      orderBy: {
-        startTime: "desc",
-      },
+      orderBy: [
+        { status: "desc" },
+        { startTime: "desc" },
+        { createdAt: "desc" },
+      ],
     });
 
-    if (runningTripAfterLock) {
+    if (activeTripAfterLock) {
       return {
         started: false,
         reason: "RUNNING_TRIP_EXISTS",
         trip: {
-          id: runningTripAfterLock.id,
-          routeId: runningTripAfterLock.routeId,
-          busId: runningTripAfterLock.busId,
-          driverId: runningTripAfterLock.driverId,
-          serviceScheduleId: runningTripAfterLock.serviceScheduleId ?? null,
-          activationMode: runningTripAfterLock.activationMode,
+          id: activeTripAfterLock.id,
+          routeId: activeTripAfterLock.routeId,
+          busId: activeTripAfterLock.busId,
+          driverId: activeTripAfterLock.driverId,
+          serviceScheduleId: activeTripAfterLock.serviceScheduleId ?? null,
+          activationMode: activeTripAfterLock.activationMode,
         },
       };
     }
