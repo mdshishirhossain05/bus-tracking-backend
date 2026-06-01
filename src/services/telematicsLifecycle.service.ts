@@ -64,16 +64,29 @@ type AutoStartResult = {
   } | null;
 };
 
+// schedule.departureTime is stored as a Time-of-day column with the
+// admin's LOCAL clock time (Dhaka, UTC+6). Prisma surfaces it as a
+// Date with that local hh:mm:ss encoded in UTC. So to compare against
+// `now`/`recordedAt` (which are real UTC instants), we shift the
+// reference time by the Dhaka offset before extracting seconds-since-
+// midnight. Otherwise a 4:30 PM Dhaka schedule only matches at
+// 9:30 PM Dhaka (the 6-hour skew).
+const DHAKA_OFFSET_MIN = 6 * 60;
+
 function secondsSinceMidnight(date: Date) {
   return (
     date.getUTCHours() * 3600 + date.getUTCMinutes() * 60 + date.getUTCSeconds()
   );
 }
 
+function dhakaSecondsSinceMidnight(date: Date) {
+  const dhakaMs = date.getTime() + DHAKA_OFFSET_MIN * 60_000;
+  return secondsSinceMidnight(new Date(dhakaMs));
+}
+
 function departureSeconds(date: Date) {
-  return (
-    date.getUTCHours() * 3600 + date.getUTCMinutes() * 60 + date.getUTCSeconds()
-  );
+  // Already encoded as Dhaka local in the Time column; read it straight.
+  return secondsSinceMidnight(date);
 }
 
 function pickBestScheduleForBus(
@@ -82,7 +95,7 @@ function pickBestScheduleForBus(
 ) {
   if (schedules.length === 0) return null;
 
-  const nowSeconds = secondsSinceMidnight(referenceTime);
+  const nowSeconds = dhakaSecondsSinceMidnight(referenceTime);
   const beforeWindowSeconds =
     Number(env.TELEMATICS_AUTO_START_SCHEDULE_WINDOW_BEFORE_MINUTES ?? 30) * 60;
   const afterWindowSeconds =

@@ -13,19 +13,28 @@ import { emitTripPreTripOpened } from "../sockets/tripRealtime.js";
  * PRE_TRIP status with phase = AT_DEPOT. This makes the bus track-able by
  * passengers and tells the driver app to start broadcasting location early.
  *
- * Time math mirrors the existing telematics auto-start logic
- * (UTC-based secondsSinceMidnight): consistent assumption across the
- * codebase that schedule.departureTime is a Time column whose UTC
- * representation matches "now"s UTC representation.
+ * Time math: `schedule.departureTime` is a Time-of-day column representing
+ * the LOCAL departure time (Dhaka, UTC+6) that an admin entered. Prisma
+ * surfaces it as a Date with the local hh:mm:ss encoded as UTC. To compare
+ * apples-to-apples we shift `now` by the Dhaka offset before extracting
+ * seconds-since-midnight. Without this shift a 4:30 PM Dhaka schedule
+ * only opens at 9:30 PM Dhaka — exactly the bug the user hit.
  */
 
 const DEFAULT_BEFORE_MINUTES = 60;
 const DEFAULT_AFTER_MINUTES = 5;
+const DHAKA_OFFSET_MIN = 6 * 60;
 
 function secondsSinceMidnight(date: Date) {
   return (
     date.getUTCHours() * 3600 + date.getUTCMinutes() * 60 + date.getUTCSeconds()
   );
+}
+
+/** "Now" expressed as seconds-since-midnight in Dhaka local time. */
+function nowDhakaSeconds(now: Date) {
+  const dhakaMs = now.getTime() + DHAKA_OFFSET_MIN * 60_000;
+  return secondsSinceMidnight(new Date(dhakaMs));
 }
 
 export async function openPreTripWindowsService(): Promise<{
@@ -35,7 +44,7 @@ export async function openPreTripWindowsService(): Promise<{
 }> {
   const now = new Date();
   const dayType = getDayTypeForDate(now);
-  const nowSec = secondsSinceMidnight(now);
+  const nowSec = nowDhakaSeconds(now);
 
   const beforeMin = Number(
     env.PRE_TRIP_WINDOW_BEFORE_MINUTES ?? DEFAULT_BEFORE_MINUTES,
