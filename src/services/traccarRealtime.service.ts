@@ -43,6 +43,9 @@ function getAuthHeaders(): Record<string, string> {
  * `/session` endpoint with our auth first, capture the `JSESSIONID` cookie,
  * then pass that on the WebSocket upgrade request.
  */
+let lastAuthFailStatus: number | null = null;
+let authFailRepeatCount = 0;
+
 async function getTraccarSessionCookie(): Promise<string | null> {
   const baseUrl = getTraccarBaseUrl();
   if (!baseUrl) return null;
@@ -53,9 +56,33 @@ async function getTraccarSessionCookie(): Promise<string | null> {
   });
 
   if (!res.ok) {
-    log.warn({ status: res.status }, "traccar session auth failed");
+    // After the first failure, downgrade subsequent identical-status
+    // logs to DEBUG so a misconfigured / unreachable Traccar doesn't
+    // drown the log file in WARN entries every minute. Surface a
+    // single WARN every ~hour as a heartbeat so the issue isn't
+    // completely silent. Resets on success.
+    if (lastAuthFailStatus === res.status) {
+      authFailRepeatCount += 1;
+      if (authFailRepeatCount % 60 === 0) {
+        log.warn(
+          { status: res.status, suppressedSince: authFailRepeatCount },
+          "traccar session auth failing repeatedly",
+        );
+      } else {
+        log.debug({ status: res.status }, "traccar session auth failed");
+      }
+    } else {
+      lastAuthFailStatus = res.status;
+      authFailRepeatCount = 1;
+      log.warn({ status: res.status }, "traccar session auth failed");
+    }
     return null;
   }
+
+  // Reset the warn-suppression counter on success so the next outage
+  // surfaces a fresh WARN.
+  lastAuthFailStatus = null;
+  authFailRepeatCount = 0;
 
   // Node's fetch returns a Headers object; multiple Set-Cookie headers are
   // joined with commas, so we scan for JSESSIONID by name.

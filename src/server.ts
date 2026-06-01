@@ -43,16 +43,36 @@ function normalizeOrigin(value: string) {
   return value.trim().replace(/\/+$/, "");
 }
 
+/**
+ * Compile a `CORS_ORIGIN` entry into a matcher. Exact-match for plain
+ * strings; glob-match for entries that contain `*` so a single rule
+ * like `https://my-app-*.vercel.app` covers every preview deployment.
+ */
+function compileOriginMatcher(origin: string) {
+  if (!origin.includes("*")) {
+    return (candidate: string) => candidate === origin;
+  }
+  // Escape regex specials, then turn `*` into `[^/]*` (won't cross
+  // path segments — keeps the pattern host-scoped).
+  const pattern = origin
+    .replace(/[.+?^${}()|[\]\\]/g, "\\$&")
+    .replace(/\*/g, "[^/]*");
+  const re = new RegExp(`^${pattern}$`);
+  return (candidate: string) => re.test(candidate);
+}
+
 function getCorsConfig() {
   const allowedOrigins = env.CORS_ORIGIN.split(",")
     .map((s) => normalizeOrigin(s))
     .filter(Boolean);
 
   const allowAllOrigins = allowedOrigins.includes("*");
+  const matchers = allowedOrigins.map(compileOriginMatcher);
 
   return {
     allowedOrigins,
     allowAllOrigins,
+    matchesAllowed: (origin: string) => matchers.some((m) => m(origin)),
   };
 }
 
@@ -200,7 +220,7 @@ async function shutdown(signal: string) {
 
 async function bootstrap() {
   const app = createApp();
-  const { allowedOrigins, allowAllOrigins } = getCorsConfig();
+  const { allowedOrigins, allowAllOrigins, matchesAllowed } = getCorsConfig();
 
   const server = http.createServer(app);
   httpServer = server;
@@ -219,7 +239,7 @@ async function bootstrap() {
 
         if (allowAllOrigins) return cb(null, true);
         if (allowedOrigins.length === 0) return cb(null, true);
-        if (allowedOrigins.includes(normalizedOrigin)) return cb(null, true);
+        if (matchesAllowed(normalizedOrigin)) return cb(null, true);
 
         return cb(new Error(`Socket CORS blocked origin: ${origin}`));
       },
