@@ -9,6 +9,7 @@ import {
   voteOccupancy,
   getOccupancy,
   listAlerts,
+  listSchedulesToday,
 } from "../controllers/passengerCompanion.controller.js";
 
 export const passengerCompanionRouter = Router();
@@ -60,4 +61,11 @@ passengerCompanionRouter.get(
   requireAuth,
   requireRole("PASSENGER", "ADMIN", "DRIVER"),
   asyncHandler(listAlerts),
+);
+
+passengerCompanionRouter.get(
+  "/passenger/schedules/today",
+  requireAuth,
+  requireRole("PASSENGER", "ADMIN", "DRIVER"),
+  asyncHandler(listSchedulesToday),
 );

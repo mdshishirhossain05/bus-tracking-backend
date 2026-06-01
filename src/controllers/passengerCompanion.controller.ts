@@ -13,6 +13,7 @@ import {
   getOccupancyAggregateService,
 } from "../services/occupancy.service.js";
 import { listActiveAlertsService } from "../services/serviceAlert.service.js";
+import { listTodaysSchedulesService } from "../services/schedulesToday.service.js";
 
 function requireUserId(req: AuthRequest): string {
   const userId = req.user?.id;
@@ -137,6 +138,16 @@ export async function listAlerts(req: AuthRequest, res: Response) {
   const items = await listActiveAlertsService(routeId);
   return sendSuccess(res, {
     message: "Alerts fetched",
+    data: { items },
+  });
+}
+
+// ---- Today's schedules (passenger planning view) ----
+
+export async function listSchedulesToday(req: AuthRequest, res: Response) {
+  const items = await listTodaysSchedulesService(requireUserId(req));
+  return sendSuccess(res, {
+    message: "Today's schedules fetched",
     data: { items },
   });
 }
