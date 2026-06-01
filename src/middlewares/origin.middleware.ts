@@ -1,23 +1,7 @@
 import type { Request, Response, NextFunction } from "express";
 import { env } from "../config/env.js";
 import { sendError } from "../utils/apiResponse.js";
-
-function normalizeOrigin(value: string) {
-  return value.trim().replace(/\/+$/, "");
-}
-
-function getOriginConfig() {
-  const allowedOrigins = env.CORS_ORIGIN.split(",")
-    .map((s) => normalizeOrigin(s))
-    .filter(Boolean);
-
-  const allowAllOrigins = allowedOrigins.includes("*");
-
-  return {
-    allowedOrigins,
-    allowAllOrigins,
-  };
-}
+import { buildCorsConfig, normalizeOrigin } from "../utils/cors.js";
 
 export function requireValidOrigin(
   req: Request,
@@ -35,7 +19,9 @@ export function requireValidOrigin(
   }
 
   const normalizedOrigin = normalizeOrigin(origin);
-  const { allowedOrigins, allowAllOrigins } = getOriginConfig();
+  const { allowedOrigins, allowAllOrigins, matchesAllowed } = buildCorsConfig(
+    env.CORS_ORIGIN,
+  );
 
   if (allowAllOrigins) {
     return next();
@@ -45,7 +31,7 @@ export function requireValidOrigin(
     return next();
   }
 
-  if (allowedOrigins.includes(normalizedOrigin)) {
+  if (matchesAllowed(normalizedOrigin)) {
     return next();
   }
 

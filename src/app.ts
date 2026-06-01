@@ -19,25 +19,13 @@ import {
   notFoundHandler,
 } from "./middlewares/error.middleware.js";
 import { registerRoutes } from "./routes/index.js";
+import { buildCorsConfig, normalizeOrigin } from "./utils/cors.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-function normalizeOrigin(value: string) {
-  return value.trim().replace(/\/+$/, "");
-}
-
 function getCorsConfig() {
-  const allowedOrigins = env.CORS_ORIGIN.split(",")
-    .map((s) => normalizeOrigin(s))
-    .filter(Boolean);
-
-  const allowAllOrigins = allowedOrigins.includes("*");
-
-  return {
-    allowedOrigins,
-    allowAllOrigins,
-  };
+  return buildCorsConfig(env.CORS_ORIGIN);
 }
 
 function isApiRequest(req: Request) {
@@ -82,7 +70,7 @@ function noStoreApiResponses(
 
 export function createApp() {
   const app = express();
-  const { allowedOrigins, allowAllOrigins } = getCorsConfig();
+  const { allowedOrigins, allowAllOrigins, matchesAllowed } = getCorsConfig();
 
   app.set("trust proxy", 1);
 
@@ -105,7 +93,7 @@ export function createApp() {
 
       if (allowAllOrigins) return cb(null, true);
       if (allowedOrigins.length === 0) return cb(null, true);
-      if (allowedOrigins.includes(normalizedOrigin)) return cb(null, true);
+      if (matchesAllowed(normalizedOrigin)) return cb(null, true);
 
       console.warn("CORS blocked origin:", {
         origin,
