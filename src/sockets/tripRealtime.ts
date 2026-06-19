@@ -1,6 +1,9 @@
 import { getIO } from "./io.js";
 import { SOCKET_EVENTS, getTripRoom } from "./events.js";
-import { createArrivalNotificationsService } from "../services/notification.service.js";
+import {
+  createArrivalNotificationsService,
+  createDepartureNotificationsService,
+} from "../services/notification.service.js";
 
 export type TripStartedRealtimePayload = {
   tripId: string;
@@ -100,6 +103,16 @@ export function emitTripStarted(payload: TripStartedRealtimePayload) {
   const io = getIO();
 
   io.to(getTripRoom(payload.tripId)).emit(SOCKET_EVENTS.TRIP_STARTED, payload);
+
+  // Fan out a "bus departed" notification to passengers who favorited the
+  // route or subscribed to one of its stops. Best-effort, deduped per trip,
+  // and never blocks the realtime broadcast.
+  void createDepartureNotificationsService({
+    tripId: payload.tripId,
+    routeId: payload.routeId,
+  }).catch(() => {
+    // Notification fan-out is non-critical.
+  });
 }
 
 export function emitTripLocationUpdated(payload: TripLocationRealtimePayload) {
