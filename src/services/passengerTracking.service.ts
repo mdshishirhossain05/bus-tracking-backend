@@ -165,6 +165,12 @@ async function resolveLiveSnapshot(trip: LiveTripSnapshotInput) {
   return null;
 }
 
+// Buses with a fix older than this are hidden from the route map.
+// 2 hours is long enough to still surface a bus that's parked between
+// runs, but short enough that yesterday's last position doesn't pretend
+// to be live.
+const PARKED_BUS_MAX_AGE_MS = 2 * 60 * 60 * 1000;
+
 export async function getLiveBusesByRouteService(routeId: string) {
   const route = await prisma.route.findUnique({
     where: { id: routeId },
@@ -296,6 +302,145 @@ export async function getLiveBusesByRouteService(routeId: string) {
     }),
   );
 
+  // ---- Parked / idle buses --------------------------------------------
+  //
+  // A bus that's between trips still has a GPS fix on its most recent
+  // (ENDED) trip row. We surface those with `status: "PARKED"` so the
+  // map can show a marker — that way a passenger checking the route at
+  // 06:00 can still see "the bus is sitting at the depot" rather than
+  // an empty map.
+  //
+  // We exclude buses already represented in `activeTrips` (their live
+  // position is more authoritative) and anything stale beyond the
+  // 2-hour window.
+  const activeBusIds = new Set(activeTrips.map((t) => t.bus.id));
+  const cutoff = new Date(Date.now() - PARKED_BUS_MAX_AGE_MS);
+
+  // For each bus assigned to this route by an active service schedule,
+  // pull its most recent trip with a fresh-enough fix.
+  const routeBuses = await prisma.serviceSchedule.findMany({
+    where: { routeId, isActive: true, bus: { isActive: true } },
+    select: { busId: true },
+    distinct: ["busId"],
+  });
+  const parkedBusIds = routeBuses
+    .map((s) => s.busId)
+    .filter((id) => !activeBusIds.has(id));
+
+  const parkedTrips = parkedBusIds.length
+    ? await prisma.trip.findMany({
+        where: {
+          busId: { in: parkedBusIds },
+          status: { notIn: ["RUNNING", "PRE_TRIP"] },
+          lastLocationAt: { gte: cutoff },
+        },
+        orderBy: { lastLocationAt: "desc" },
+        select: {
+          id: true,
+          busId: true,
+          routeId: true,
+          driverId: true,
+          status: true,
+          startTime: true,
+          endTime: true,
+          lastLatitude: true,
+          lastLongitude: true,
+          lastSpeedKmh: true,
+          lastHeading: true,
+          lastAccuracyM: true,
+          lastLocationAt: true,
+          isStale: true,
+          lastTrackingSourceType: true,
+          lastTrackingSourceStatus: true,
+          lastTrackingSelectionReason: true,
+          lastTrackingSourceLabel: true,
+          bus: {
+            select: {
+              id: true,
+              busCode: true,
+              plateNumber: true,
+              capacity: true,
+            },
+          },
+          driver: {
+            select: { id: true, fullName: true, email: true },
+          },
+        },
+      })
+    : [];
+
+  // Keep only the newest trip per bus.
+  const newestParkedByBus = new Map<string, (typeof parkedTrips)[number]>();
+  for (const t of parkedTrips) {
+    if (!newestParkedByBus.has(t.busId)) newestParkedByBus.set(t.busId, t);
+  }
+
+  const parkedBuses = Array.from(newestParkedByBus.values()).map((trip) => {
+    const speedKmh = toNumber(trip.lastSpeedKmh);
+    const sourceType = trip.lastTrackingSourceType ?? null;
+    const sourceLabel =
+      trip.lastTrackingSourceLabel ??
+      (sourceType === "GPS_DEVICE"
+        ? "GPS Device"
+        : sourceType === "DRIVER_MOBILE"
+          ? "Driver Mobile"
+          : "DB_TRIP_SNAPSHOT");
+    const live = {
+      lat: Number(String(trip.lastLatitude)),
+      lng: Number(String(trip.lastLongitude)),
+      latitude: Number(String(trip.lastLatitude)),
+      longitude: Number(String(trip.lastLongitude)),
+      speedKmh,
+      speed: speedKmh,
+      filteredSpeedKmh: speedKmh,
+      rawSpeedKmh: speedKmh,
+      averageSpeedKmh: speedKmh,
+      rollingAverageSpeedKmh: speedKmh,
+      displaySpeedKmh: speedKmh,
+      heading: trip.lastHeading ?? null,
+      accuracyM: toNumber(trip.lastAccuracyM),
+      isStationary: true,
+      distanceDeltaMeters: null,
+      elapsedSeconds: null,
+      recordedAt: trip.lastLocationAt?.toISOString() ?? null,
+      updatedAt: trip.lastLocationAt?.toISOString() ?? null,
+      source: sourceLabel,
+      sourceType,
+      sourceStatus: trip.lastTrackingSourceStatus ?? null,
+      selectionReason: trip.lastTrackingSelectionReason ?? null,
+      isStale: Boolean(trip.isStale),
+    };
+    return {
+      tripId: trip.id,
+      serviceScheduleId: null,
+      routeId: trip.routeId,
+      // "PARKED" is not a Trip enum value — it's a marker for the UI
+      // that this bus is idle between runs.
+      status: "PARKED" as const,
+      startedAt: trip.startTime?.toISOString() ?? null,
+      endedAt: trip.endTime?.toISOString() ?? null,
+      preTripPhase: null,
+      preTripStartedAt: null,
+      originArrivedAt: null,
+      isStale: trip.isStale,
+      bus: {
+        id: trip.bus.id,
+        busCode: trip.bus.busCode,
+        plateNumber: trip.bus.plateNumber,
+        capacity: trip.bus.capacity,
+      },
+      driver: trip.driver
+        ? {
+            id: trip.driver.id,
+            fullName: trip.driver.fullName,
+            email: trip.driver.email,
+          }
+        : null,
+      live,
+      eta: null,
+    };
+  });
+
   return {
     route: {
       id: route.id,
@@ -303,7 +448,7 @@ export async function getLiveBusesByRouteService(routeId: string) {
       description: route.description,
       isActive: route.isActive,
     },
-    activeTrips,
+    activeTrips: [...activeTrips, ...parkedBuses],
   };
 }
 

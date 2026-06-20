@@ -145,7 +145,10 @@ export async function listAlerts(req: AuthRequest, res: Response) {
 // ---- Today's schedules (passenger planning view) ----
 
 export async function listSchedulesToday(req: AuthRequest, res: Response) {
-  const items = await listTodaysSchedulesService(requireUserId(req));
+  const raw = typeof req.query.day === "string" ? req.query.day : "today";
+  const scope =
+    raw === "tomorrow" || raw === "all" ? raw : "today";
+  const items = await listTodaysSchedulesService(requireUserId(req), scope);
   return sendSuccess(res, {
     message: "Today's schedules fetched",
     data: { items },
