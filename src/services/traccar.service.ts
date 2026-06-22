@@ -47,36 +47,52 @@ export function isTraccarConfigured() {
 /**
  * Traccar authentication.
  *
- * This server's Traccar (v6) REJECTS `Authorization: Bearer <token>` with a
- * 404 and only accepts an API token as a `?token=` query parameter — which
- * is the method Traccar officially documents. Username/password still works
- * via HTTP Basic as a fallback. So auth splits into two mutually-exclusive
- * contributions:
- *   • a query-param token (preferred), or
- *   • a Basic auth header (fallback)
- * and never both. `traccarRequest` applies whichever is returned.
+ * This server's Traccar (v6) only accepts an API token via the
+ * `/session?token=` endpoint, which logs in and returns a JSESSIONID
+ * cookie. The token is NOT honoured on data endpoints (`/devices`,
+ * `/positions`, …) — those return 401 unless the request carries that
+ * session cookie. (`Authorization: Bearer` is rejected outright with a
+ * 404.) So for token auth we:
+ *   1. GET /session?token=<token>  → capture JSESSIONID
+ *   2. send that cookie on every subsequent request
+ *   3. re-login once on a 401 (cookie expired / server restarted)
+ *
+ * Username/password still works via plain HTTP Basic as a fallback and
+ * needs no session dance.
  */
-function getTraccarAuth(): {
-  tokenParam: string | null;
-  headers: Record<string, string>;
-} {
-  const token = process.env.TRACCAR_API_TOKEN?.trim();
-  if (token) {
-    return { tokenParam: token, headers: {} };
-  }
+let cachedSessionCookie: string | null = null;
 
+function getBasicAuthHeader(): Record<string, string> | null {
   const username = process.env.TRACCAR_USERNAME?.trim();
   const password = process.env.TRACCAR_PASSWORD?.trim();
+  if (!username || !password) return null;
+  const basic = Buffer.from(`${username}:${password}`).toString("base64");
+  return { Authorization: `Basic ${basic}` };
+}
 
-  if (!username || !password) {
-    throw new Error(
-      "Traccar is not configured. Set TRACCAR_BASE_URL and either TRACCAR_API_TOKEN or TRACCAR_USERNAME/TRACCAR_PASSWORD.",
-    );
+/**
+ * Log in with the API token and cache the returned JSESSIONID cookie.
+ * Returns the cookie string (e.g. "JSESSIONID=abc") or null on failure.
+ */
+async function loginWithTokenForCookie(baseUrl: string): Promise<string | null> {
+  const token = process.env.TRACCAR_API_TOKEN?.trim();
+  if (!token) return null;
+
+  const res = await fetch(`${baseUrl}/session?token=${encodeURIComponent(token)}`, {
+    method: "GET",
+    headers: { Accept: "application/json" },
+  });
+  if (!res.ok) {
+    cachedSessionCookie = null;
+    return null;
   }
 
-  const basic = Buffer.from(`${username}:${password}`).toString("base64");
-
-  return { tokenParam: null, headers: { Authorization: `Basic ${basic}` } };
+  // Node's fetch joins multiple Set-Cookie headers with commas; scan for
+  // the JSESSIONID by name so we don't grab an unrelated cookie.
+  const setCookie = res.headers.get("set-cookie") ?? "";
+  const match = /JSESSIONID=([^;,\s]+)/.exec(setCookie);
+  cachedSessionCookie = match ? `JSESSIONID=${match[1]}` : null;
+  return cachedSessionCookie;
 }
 
 async function traccarRequest<T>(path: string, init?: RequestInit): Promise<T> {
@@ -87,25 +103,40 @@ async function traccarRequest<T>(path: string, init?: RequestInit): Promise<T> {
     );
   }
 
-  const { tokenParam, headers: authHeaders } = getTraccarAuth();
+  const usingToken = Boolean(process.env.TRACCAR_API_TOKEN?.trim());
+  const basicHeader = usingToken ? null : getBasicAuthHeader();
 
-  // Append the token as a query param (Traccar v6's accepted method).
-  // `path` may already carry a query string (e.g. "/devices?id=2"), so
-  // pick the right separator.
-  let url = `${baseUrl}${path}`;
-  if (tokenParam) {
-    const sep = url.includes("?") ? "&" : "?";
-    url += `${sep}token=${encodeURIComponent(tokenParam)}`;
+  if (!usingToken && !basicHeader) {
+    throw new Error(
+      "Traccar is not configured. Set TRACCAR_BASE_URL and either TRACCAR_API_TOKEN or TRACCAR_USERNAME/TRACCAR_PASSWORD.",
+    );
   }
 
-  const response = await fetch(url, {
-    ...init,
-    headers: {
+  const doFetch = async (cookie: string | null) => {
+    const headers: Record<string, string> = {
       "Content-Type": "application/json",
-      ...authHeaders,
-      ...(init?.headers ?? {}),
-    },
-  });
+      ...(basicHeader ?? {}),
+      ...((init?.headers as Record<string, string>) ?? {}),
+    };
+    if (cookie) headers.Cookie = cookie;
+    return fetch(`${baseUrl}${path}`, { ...init, headers });
+  };
+
+  // Token auth: ensure we have a session cookie before the data request.
+  if (usingToken && !cachedSessionCookie) {
+    await loginWithTokenForCookie(baseUrl);
+  }
+
+  let response = await doFetch(usingToken ? cachedSessionCookie : null);
+
+  // A 401 on token auth means the cookie expired (or the server restarted
+  // and forgot our session). Re-login once and retry before giving up.
+  if (response.status === 401 && usingToken) {
+    const fresh = await loginWithTokenForCookie(baseUrl);
+    if (fresh) {
+      response = await doFetch(fresh);
+    }
+  }
 
   if (!response.ok) {
     const text = await response.text();
