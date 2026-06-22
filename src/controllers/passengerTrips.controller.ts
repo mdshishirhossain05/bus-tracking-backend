@@ -21,10 +21,24 @@ export async function listActiveTrips(_req: Request, res: Response) {
     },
   });
 
+  // De-duplicate by (routeId, busId): when the same bus has both a
+  // RUNNING trip AND a stale PRE_TRIP shell on the same route, only the
+  // RUNNING one matters to the rider — the pre-trip row is the empty
+  // shell the bus already departed from. Because the query orders by
+  // status DESC ("RUNNING" > "PRE_TRIP"), keeping the first occurrence
+  // per key naturally drops the PRE_TRIP duplicate.
+  const seen = new Set<string>();
+  const dedupedTrips = trips.filter((trip) => {
+    const key = `${trip.routeId}:${trip.busId}`;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+
   return sendSuccess(res, {
     message: "Active trips retrieved successfully",
     data: {
-      trips: trips.map((trip) => ({
+      trips: dedupedTrips.map((trip) => ({
         tripId: trip.id,
         routeId: trip.routeId,
         routeName: trip.route.routeName,
