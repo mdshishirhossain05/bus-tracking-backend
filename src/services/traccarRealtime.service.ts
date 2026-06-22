@@ -50,9 +50,23 @@ async function getTraccarSessionCookie(): Promise<string | null> {
   const baseUrl = getTraccarBaseUrl();
   if (!baseUrl) return null;
 
-  const res = await fetch(`${baseUrl}/session`, {
+  // Traccar v6 rejects `Authorization: Bearer` (404) and only honours the
+  // token as a `?token=` query param. Authenticating GET /session that way
+  // still establishes the server-side session and returns the JSESSIONID
+  // cookie we hand to the WebSocket upgrade. Username/password falls back
+  // to the Basic header.
+  const token = process.env.TRACCAR_API_TOKEN?.trim();
+  let url = `${baseUrl}/session`;
+  const headers: Record<string, string> = { Accept: "application/json" };
+  if (token) {
+    url += `?token=${encodeURIComponent(token)}`;
+  } else {
+    Object.assign(headers, getAuthHeaders());
+  }
+
+  const res = await fetch(url, {
     method: "GET",
-    headers: { Accept: "application/json", ...getAuthHeaders() },
+    headers,
   });
 
   if (!res.ok) {

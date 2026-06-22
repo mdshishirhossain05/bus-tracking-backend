@@ -44,12 +44,25 @@ export function isTraccarConfigured() {
   return Boolean(baseUrl && (hasToken || hasBasic));
 }
 
-function getTraccarAuthHeaders() {
+/**
+ * Traccar authentication.
+ *
+ * This server's Traccar (v6) REJECTS `Authorization: Bearer <token>` with a
+ * 404 and only accepts an API token as a `?token=` query parameter — which
+ * is the method Traccar officially documents. Username/password still works
+ * via HTTP Basic as a fallback. So auth splits into two mutually-exclusive
+ * contributions:
+ *   • a query-param token (preferred), or
+ *   • a Basic auth header (fallback)
+ * and never both. `traccarRequest` applies whichever is returned.
+ */
+function getTraccarAuth(): {
+  tokenParam: string | null;
+  headers: Record<string, string>;
+} {
   const token = process.env.TRACCAR_API_TOKEN?.trim();
   if (token) {
-    return {
-      Authorization: `Bearer ${token}`,
-    };
+    return { tokenParam: token, headers: {} };
   }
 
   const username = process.env.TRACCAR_USERNAME?.trim();
@@ -63,9 +76,7 @@ function getTraccarAuthHeaders() {
 
   const basic = Buffer.from(`${username}:${password}`).toString("base64");
 
-  return {
-    Authorization: `Basic ${basic}`,
-  };
+  return { tokenParam: null, headers: { Authorization: `Basic ${basic}` } };
 }
 
 async function traccarRequest<T>(path: string, init?: RequestInit): Promise<T> {
@@ -76,11 +87,22 @@ async function traccarRequest<T>(path: string, init?: RequestInit): Promise<T> {
     );
   }
 
-  const response = await fetch(`${baseUrl}${path}`, {
+  const { tokenParam, headers: authHeaders } = getTraccarAuth();
+
+  // Append the token as a query param (Traccar v6's accepted method).
+  // `path` may already carry a query string (e.g. "/devices?id=2"), so
+  // pick the right separator.
+  let url = `${baseUrl}${path}`;
+  if (tokenParam) {
+    const sep = url.includes("?") ? "&" : "?";
+    url += `${sep}token=${encodeURIComponent(tokenParam)}`;
+  }
+
+  const response = await fetch(url, {
     ...init,
     headers: {
       "Content-Type": "application/json",
-      ...getTraccarAuthHeaders(),
+      ...authHeaders,
       ...(init?.headers ?? {}),
     },
   });
