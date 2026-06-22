@@ -9,6 +9,7 @@ import {
 } from "./tripRealtimeState.service.js";
 import { emitTripEnded } from "../sockets/tripRealtime.js";
 import { logTripEnded, logSystemAlert } from "./tripEvent.service.js";
+import { createTripCancelledNotificationsService } from "./notification.service.js";
 import { getStopsForTrip } from "./tripStopsCache.service.js";
 import { getLatestArrivedStopForTrip } from "./stopArrivalProgress.service.js";
 import { computeNextStopAndEta } from "./eta.service.js";
@@ -232,6 +233,15 @@ export async function finalizeTripService(
     endReason: input.endReason,
     endedBySourceType: input.endedBySourceType ?? null,
   });
+
+  // Best-effort push fan-out for ABNORMAL ends (admin cancel, lost feed,
+  // system timeout). Natural completion at the final stop is filtered out
+  // inside the service. Never blocks the trip-ended broadcast above.
+  void createTripCancelledNotificationsService({
+    tripId: updated.id,
+    routeId: updated.routeId,
+    endReason: input.endReason,
+  }).catch(() => undefined);
 
   await writeAuditLogSafe({
     actorUserId: input.actorUserId ?? null,

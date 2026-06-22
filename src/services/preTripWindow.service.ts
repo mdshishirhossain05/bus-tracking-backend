@@ -3,6 +3,7 @@ import { env } from "../config/env.js";
 import { logger } from "../config/logger.js";
 import { getDayTypeForDate } from "../utils/dayType.js";
 import { emitTripPreTripOpened } from "../sockets/tripRealtime.js";
+import { createPreTripNotificationsService } from "./notification.service.js";
 
 /**
  * Pre-trip window opener.
@@ -154,6 +155,14 @@ export async function openPreTripWindowsService(): Promise<{
         preTripStartedAt: (trip.preTripStartedAt ?? now).toISOString(),
         scheduledDepartureAt: schedule.departureTime.toISOString(),
       });
+
+      // Fan out a "Bus warming up" push to riders who favorited the route
+      // or subscribed to a stop. Best-effort, deduped per trip, must never
+      // block the realtime broadcast above.
+      void createPreTripNotificationsService({
+        tripId: trip.id,
+        routeId: trip.routeId,
+      }).catch(() => undefined);
 
       logger.info(
         {

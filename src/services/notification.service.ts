@@ -11,6 +11,12 @@ const MAX_LIST = 30;
 // activation paths (manual driver, admin, auto-telematics promotion) reach
 // emitTripStarted. The dedup key outlives any single trip.
 const DEPARTURE_DEDUP_TTL_MS = 6 * 60 * 60 * 1000; // 6 h
+// Same idea for the pre-trip "warming up" push — once per tripId, no
+// matter how many pre-trip events fan in (window opener cron, GPS
+// auto-create, etc.).
+const PRE_TRIP_DEDUP_TTL_MS = 6 * 60 * 60 * 1000; // 6 h
+// And for the cancelled / abnormally-ended trip push.
+const CANCELLED_DEDUP_TTL_MS = 6 * 60 * 60 * 1000; // 6 h
 
 export async function listNotificationsService(userId: string) {
   const [rows, unreadCount] = await Promise.all([
@@ -229,6 +235,266 @@ export async function createDepartureNotificationsService(input: {
     body,
     data: {
       type: "TRIP_DEPARTED",
+      link: "/passenger/live",
+      tripId: input.tripId,
+      routeId: input.routeId,
+    },
+  }).catch(() => undefined);
+}
+
+/**
+ * Fan out a "Bus warming up" notification when a trip enters PRE_TRIP.
+ *
+ * Riders who favorited the route get an early heads-up the moment the
+ * bus starts broadcasting from the depot — typically ~60 min before
+ * scheduled departure — so they can leave for the stop on time, without
+ * having to wait for the trip to officially go RUNNING.
+ *
+ * Same shape as createDepartureNotificationsService: redis NX dedup,
+ * respects per-user notificationsEnabled + quiet hours, persists an
+ * in-app Notification row, emits a socket nudge to live sessions, and
+ * sends an Expo push to wake closed devices. Best-effort end to end —
+ * a failure here never blocks the pre-trip broadcast.
+ */
+export async function createPreTripNotificationsService(input: {
+  tripId: string;
+  routeId: string;
+}) {
+  // Once per trip's PRE_TRIP entry, across every code path that might
+  // create the row (cron window opener, GPS-driven auto-create, etc.).
+  const claimed = await redis
+    .set(`tripPreTrip:${input.tripId}`, "1", {
+      PX: PRE_TRIP_DEDUP_TTL_MS,
+      NX: true,
+    })
+    .catch(() => "OK"); // redis down → don't suppress the first attempt
+  if (claimed !== "OK") return;
+
+  // Recipients = anyone who favorited the route OR subscribed to a stop
+  // on it. Matches the trip-departed audience, since interest in the
+  // route is the same signal at either lifecycle stage.
+  const [favorites, subscriptions] = await Promise.all([
+    prisma.favoriteRoute.findMany({
+      where: { routeId: input.routeId },
+      select: { userId: true },
+    }),
+    prisma.stopSubscription.findMany({
+      where: { routeId: input.routeId, enabled: true },
+      select: { userId: true },
+    }),
+  ]);
+
+  const candidateIds = [
+    ...new Set([
+      ...favorites.map((f) => f.userId),
+      ...subscriptions.map((s) => s.userId),
+    ]),
+  ];
+  if (candidateIds.length === 0) return;
+
+  const users = await prisma.user.findMany({
+    where: { id: { in: candidateIds }, notificationsEnabled: true },
+    select: {
+      id: true,
+      notificationsEnabled: true,
+      quietHoursStartMin: true,
+      quietHoursEndMin: true,
+    },
+  });
+  const now = new Date();
+  const recipients = users
+    .filter(
+      (u) =>
+        !isInQuietHours(
+          {
+            notificationsEnabled: u.notificationsEnabled,
+            quietHoursStartMin: u.quietHoursStartMin,
+            quietHoursEndMin: u.quietHoursEndMin,
+          },
+          now,
+        ),
+    )
+    .map((u) => u.id);
+  if (recipients.length === 0) return;
+
+  const route = await prisma.route.findUnique({
+    where: { id: input.routeId },
+    select: { routeName: true },
+  });
+  const routeName = route?.routeName ?? "your route";
+
+  const title = `Bus warming up · ${routeName}`;
+  const body = `A bus on ${routeName} just started broadcasting from the depot. The trip will begin shortly.`;
+
+  await prisma.notification
+    .createMany({
+      data: recipients.map((userId) => ({
+        userId,
+        type: "TRIP_PRE_TRIP",
+        title,
+        body,
+        link: "/passenger/live",
+      })),
+    })
+    .catch(() => undefined);
+
+  try {
+    const io = getIO();
+    for (const userId of recipients) {
+      io.to(getUserRoom(userId)).emit(SOCKET_EVENTS.NOTIFICATION, {
+        type: "TRIP_PRE_TRIP",
+      });
+    }
+  } catch {
+    // Socket server not ready — persisted notifications still deliver.
+  }
+
+  await sendExpoPushToUsersService(recipients, {
+    title,
+    body,
+    data: {
+      type: "TRIP_PRE_TRIP",
+      link: "/passenger/live",
+      tripId: input.tripId,
+      routeId: input.routeId,
+    },
+  }).catch(() => undefined);
+}
+
+/**
+ * Fan out a "Bus cancelled" notification when a trip ends ABNORMALLY.
+ *
+ * Riders who favorited the route get told so they stop waiting for a
+ * bus that isn’t coming. Only fires for unexpected ends — natural
+ * completion (bus reached final stop) is NOT a notification event,
+ * since the rider already saw or is finishing the trip themselves.
+ *
+ * Caller passes the trip end reason; we filter to the abnormal subset:
+ *   - MANUAL_ADMIN              (someone above the driver killed it)
+ *   - AUTO_TELEMETRY_TIMEOUT    (GPS feed died mid-route)
+ *   - SYSTEM_STALE_TIMEOUT      (system gave up on a stuck feed)
+ * Other reasons (driver-ended, reached final stop) are treated as
+ * legitimate completions and skipped silently.
+ *
+ * Same shape as createDepartureNotificationsService: redis NX dedup,
+ * respects per-user prefs + quiet hours, persists in-app row, socket
+ * nudge, Expo push to wake closed devices. Best-effort end to end.
+ */
+export async function createTripCancelledNotificationsService(input: {
+  tripId: string;
+  routeId: string;
+  endReason:
+    | "MANUAL_DRIVER"
+    | "MANUAL_ADMIN"
+    | "AUTO_FINAL_STOP_ARRIVAL"
+    | "AUTO_FINAL_STOP_STATIONARY"
+    | "AUTO_TELEMETRY_TIMEOUT"
+    | "SYSTEM_STALE_TIMEOUT"
+    | string
+    | undefined;
+}) {
+  const reason = input.endReason ?? "";
+  const abnormal =
+    reason === "MANUAL_ADMIN" ||
+    reason === "AUTO_TELEMETRY_TIMEOUT" ||
+    reason === "SYSTEM_STALE_TIMEOUT";
+  if (!abnormal) return;
+
+  const claimed = await redis
+    .set(`tripCancelled:${input.tripId}`, "1", {
+      PX: CANCELLED_DEDUP_TTL_MS,
+      NX: true,
+    })
+    .catch(() => "OK");
+  if (claimed !== "OK") return;
+
+  const [favorites, subscriptions] = await Promise.all([
+    prisma.favoriteRoute.findMany({
+      where: { routeId: input.routeId },
+      select: { userId: true },
+    }),
+    prisma.stopSubscription.findMany({
+      where: { routeId: input.routeId, enabled: true },
+      select: { userId: true },
+    }),
+  ]);
+
+  const candidateIds = [
+    ...new Set([
+      ...favorites.map((f) => f.userId),
+      ...subscriptions.map((s) => s.userId),
+    ]),
+  ];
+  if (candidateIds.length === 0) return;
+
+  const users = await prisma.user.findMany({
+    where: { id: { in: candidateIds }, notificationsEnabled: true },
+    select: {
+      id: true,
+      notificationsEnabled: true,
+      quietHoursStartMin: true,
+      quietHoursEndMin: true,
+    },
+  });
+  const now = new Date();
+  const recipients = users
+    .filter(
+      (u) =>
+        !isInQuietHours(
+          {
+            notificationsEnabled: u.notificationsEnabled,
+            quietHoursStartMin: u.quietHoursStartMin,
+            quietHoursEndMin: u.quietHoursEndMin,
+          },
+          now,
+        ),
+    )
+    .map((u) => u.id);
+  if (recipients.length === 0) return;
+
+  const route = await prisma.route.findUnique({
+    where: { id: input.routeId },
+    select: { routeName: true },
+  });
+  const routeName = route?.routeName ?? "your route";
+
+  // Two close reasons get a slightly different body so the rider
+  // understands WHY their bus stopped — admin action vs lost feed.
+  const lostFeed =
+    reason === "AUTO_TELEMETRY_TIMEOUT" || reason === "SYSTEM_STALE_TIMEOUT";
+  const title = `Trip cancelled · ${routeName}`;
+  const body = lostFeed
+    ? `We lost contact with the bus on ${routeName}. The trip has ended.`
+    : `The trip on ${routeName} has been cancelled.`;
+
+  await prisma.notification
+    .createMany({
+      data: recipients.map((userId) => ({
+        userId,
+        type: "TRIP_CANCELLED",
+        title,
+        body,
+        link: "/passenger/live",
+      })),
+    })
+    .catch(() => undefined);
+
+  try {
+    const io = getIO();
+    for (const userId of recipients) {
+      io.to(getUserRoom(userId)).emit(SOCKET_EVENTS.NOTIFICATION, {
+        type: "TRIP_CANCELLED",
+      });
+    }
+  } catch {
+    // Socket server not ready — persisted notifications still deliver.
+  }
+
+  await sendExpoPushToUsersService(recipients, {
+    title,
+    body,
+    data: {
+      type: "TRIP_CANCELLED",
       link: "/passenger/live",
       tripId: input.tripId,
       routeId: input.routeId,
