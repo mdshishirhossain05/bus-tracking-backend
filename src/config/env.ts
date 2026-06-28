@@ -159,6 +159,8 @@ const envSchema = z.object({
   // online in Traccar but Never seen in our system" bugs.
   TRACCAR_POLL_ENABLED: z.coerce.boolean().default(true),
   TRACCAR_POLL_INTERVAL_MS: z.coerce.number().int().positive().default(8000),
+  TRACCAR_POLL_TRIP_AWARE: z.coerce.boolean().default(true),
+  TRACCAR_IDLE_POLL_INTERVAL_MS: z.coerce.number().int().positive().default(60000),
 
   // Realtime push from Traccar via its WebSocket endpoint. This gives us
   // sub-second position updates instead of waiting for the next poll cycle,

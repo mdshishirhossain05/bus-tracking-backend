@@ -15,14 +15,6 @@ let cycleRunning = false;
 
 const KNOTS_TO_KMH = 1.852;
 
-// Trip-aware idle throttle. A bus that is NOT in an active (PRE_TRIP/RUNNING)
-// trip is "idle": its tracker still reports continuously, but we do not need
-// that data 8 s apart. We poll idle devices only on a slow heartbeat so we
-// still (a) keep lastSeenAt fresh and (b) can detect GPS-triggered auto-start,
-// while eliminating the ~98% of ingests that occur while buses are parked.
-// On-trip devices are always polled at the full interval.
-const idleLastPolledMs = new Map<string, number>();
-
 async function pollOnce() {
   if (cycleRunning) return;
   cycleRunning = true;
@@ -30,6 +22,9 @@ async function pollOnce() {
   try {
     if (!isTraccarConfigured()) return;
 
+    // Only Traccar-managed devices that have actually been reconciled with a
+    // remote `traccarDeviceId`. Without that ID we have nothing to poll
+    // against.
     const devices = await prisma.gpsDevice.findMany({
       where: {
         isActive: true,
@@ -47,57 +42,21 @@ async function pollOnce() {
 
     if (devices.length === 0) return;
 
-    // ---- Trip-aware gating -------------------------------------------------
-    // Build (a) the set of buses currently on an active trip and (b) a
-    // gpsDevice -> busId map from the active assignments, so we can decide
-    // per device whether it is on a trip right now.
-    const tripAware = env.TRACCAR_POLL_TRIP_AWARE !== false;
-    let activeBusIds = new Set<string>();
-    let deviceToBus = new Map<string, string>();
-
-    if (tripAware) {
-      const [activeTrips, assignments] = await Promise.all([
-        prisma.trip.findMany({
-          where: { status: { in: ["PRE_TRIP", "RUNNING"] } },
-          select: { busId: true },
-        }),
-        prisma.busGpsDeviceAssignment.findMany({
-          where: { isActive: true, unassignedAt: null },
-          select: { busId: true, gpsDeviceId: true },
-        }),
-      ]);
-      activeBusIds = new Set(activeTrips.map((t) => t.busId));
-      deviceToBus = new Map(assignments.map((a) => [a.gpsDeviceId, a.busId]));
-    }
-
-    const idleIntervalMs = Math.max(
-      8000,
-      Number(env.TRACCAR_IDLE_POLL_INTERVAL_MS ?? 60000),
-    );
-    const now = Date.now();
-    let skippedIdle = 0;
-
     for (const device of devices) {
-      // Skip idle (not-on-trip) devices except on the slow heartbeat.
-      if (tripAware) {
-        const busId = deviceToBus.get(device.id);
-        const onTrip = busId ? activeBusIds.has(busId) : false;
-        if (!onTrip) {
-          const last = idleLastPolledMs.get(device.id) ?? 0;
-          if (now - last < idleIntervalMs) {
-            skippedIdle += 1;
-            continue;
-          }
-          idleLastPolledMs.set(device.id, now);
-        }
-      }
-
       try {
+        // Heartbeat (`lastUpdate` on the device record) and the latest GPS
+        // fix can diverge — the device might still be online with Traccar
+        // while its GPS chip hasn't produced a new fix in hours. Fetch
+        // both so we can update lastSeenAt independently of lastRecordedAt.
         const [remoteDevice, position] = await Promise.all([
           fetchTraccarDeviceById(device.traccarDeviceId!),
           fetchTraccarLatestPositionForDevice(device.traccarDeviceId!),
         ]);
 
+        // Update lastSeenAt from Traccar's heartbeat even when no new GPS
+        // fix arrived. Otherwise a stationary-but-online device drifts to
+        // OFFLINE simply because we stopped ingesting (the existing flow
+        // only updated lastSeenAt inside ingestGpsDeviceLocationService).
         const heartbeatIso =
           remoteDevice?.lastUpdate ?? position?.serverTime ?? null;
         const heartbeatTime = heartbeatIso ? new Date(heartbeatIso) : null;
@@ -115,11 +74,21 @@ async function pollOnce() {
 
         if (!position) continue;
 
+        // Prefer Traccar's `serverTime` (when Traccar received the packet)
+        // over the device-reported `fixTime`. Some device firmware — notably
+        // ConCox GT06 — reports fixTime without a UTC offset, so Traccar's
+        // fixTime can end up several hours behind real time even when the
+        // device is actively moving. ServerTime is monotonic and
+        // timezone-correct because it comes from Traccar's clock, not the
+        // device's clock.
         const fixIso =
           position.serverTime ?? position.fixTime ?? position.deviceTime;
         const fixTime = fixIso ? new Date(fixIso) : null;
         if (!fixTime || Number.isNaN(fixTime.getTime())) continue;
 
+        // The ingest pipeline already enforces monotonic timestamps + rate
+        // limits, but checking here avoids the noise of doing the call only
+        // to have it filtered out.
         if (
           device.lastRecordedAt &&
           fixTime.getTime() <= device.lastRecordedAt.getTime()
@@ -151,13 +120,6 @@ async function pollOnce() {
         );
       }
     }
-
-    if (tripAware && skippedIdle > 0) {
-      pollLogger.debug(
-        { skippedIdle, activeBuses: activeBusIds.size },
-        "traccar poll: throttled idle devices",
-      );
-    }
   } catch (err) {
     pollLogger.error({ err }, "traccar poll cycle failed");
   } finally {
@@ -181,19 +143,13 @@ export function startTraccarPollJob() {
   }
 
   const intervalMs = Math.max(2000, Number(env.TRACCAR_POLL_INTERVAL_MS ?? 8000));
-  pollLogger.info(
-    {
-      intervalMs,
-      tripAware: env.TRACCAR_POLL_TRIP_AWARE !== false,
-      idleIntervalMs: Number(env.TRACCAR_IDLE_POLL_INTERVAL_MS ?? 60000),
-    },
-    "starting traccar poll job",
-  );
+  pollLogger.info({ intervalMs }, "starting traccar poll job");
 
   timer = setInterval(() => {
     void pollOnce();
   }, intervalMs);
 
+  // Kick once at startup so positions land without waiting a full interval.
   void pollOnce();
 }
 

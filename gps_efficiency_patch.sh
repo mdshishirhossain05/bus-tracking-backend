@@ -1,3 +1,22 @@
+#!/usr/bin/env bash
+# =====================================================================
+# UniBus Live — GPS efficiency patch (trip-aware idle throttling)
+#
+# Stops the backend from polling/ingesting a bus's GPS every 8s while it
+# is parked. On-trip buses (PRE_TRIP/RUNNING) keep full 8s polling; idle
+# buses are polled only every TRACCAR_IDLE_POLL_INTERVAL_MS (default 60s).
+# Eliminates the bulk of the ~98% idle ingests, cuts DB bloat + server load,
+# and preserves GPS auto-start. Fully reversible (set TRACCAR_POLL_TRIP_AWARE=false).
+#
+# RUN ON THE VPS:   cd /opt/bus-tracking-backend && bash gps_efficiency_patch.sh
+# =====================================================================
+set -e
+APP=/opt/bus-tracking-backend
+cd "$APP"
+
+echo "==> 1/4  Backing up + writing trip-aware poll job"
+cp src/services/traccarPoll.job.ts "src/services/traccarPoll.job.ts.bak.$(date +%s)" 2>/dev/null || true
+cat > src/services/traccarPoll.job.ts << 'TSEOF'
 import { prisma } from "../config/prisma.js";
 import { env } from "../config/env.js";
 import { logger } from "../config/logger.js";
@@ -203,3 +222,32 @@ export function stopTraccarPollJob() {
     timer = null;
   }
 }
+TSEOF
+
+echo "==> 2/4  Adding env defaults (idempotent)"
+if ! grep -q "TRACCAR_POLL_TRIP_AWARE" src/config/env.ts; then
+python3 - << 'PY'
+p="src/config/env.ts"; s=open(p).read()
+a='  TRACCAR_POLL_INTERVAL_MS: z.coerce.number().int().positive().default(8000),'
+add=('\n  TRACCAR_POLL_TRIP_AWARE: z.coerce.boolean().default(true),\n'
+     '  TRACCAR_IDLE_POLL_INTERVAL_MS: z.coerce.number().int().positive().default(60000),')
+assert a in s, "env anchor not found"
+s=s.replace(a,a+add,1); open(p,"w").write(s)
+PY
+fi
+echo "    env vars present: $(grep -c 'TRACCAR_POLL_TRIP_AWARE\|TRACCAR_IDLE_POLL_INTERVAL_MS' src/config/env.ts)  (expect 2)"
+
+echo "==> 3/4  Building"
+npm run build
+
+echo "==> 4/4  Restarting"
+systemctl restart bus-backend
+sleep 5
+echo "    service: $(systemctl is-active bus-backend)"
+echo ""
+echo "DONE. Idle buses now poll every 60s instead of every 8s."
+echo "Tune or disable in /opt/bus-tracking-backend/.env :"
+echo "    TRACCAR_POLL_TRIP_AWARE=true        # false = revert to old behaviour"
+echo "    TRACCAR_IDLE_POLL_INTERVAL_MS=60000 # raise to save more (e.g. 120000)"
+echo ""
+echo "To save to GitHub:  git add -A && git commit -m 'gps: trip-aware idle poll throttling' && git push"
