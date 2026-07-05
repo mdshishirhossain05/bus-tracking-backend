@@ -23,6 +23,14 @@
 \def\BibTeX{{\rm B\kern-.05em{\sc i\kern-.025em b}\kern-.08em
   T\kern-.1667em\lower.7ex\hbox{E}\kern-.125emX}}
 
+\tikzset{
+  arr/.style={-{Latex[length=1.8mm,width=1.5mm]}, semithick, draw=black!80},
+  barr/.style={-{Latex[length=1.8mm,width=1.5mm]}, semithick, draw=black!80, densely dashed},
+  blk/.style={draw=black!65, rounded corners=1.4pt, align=center, inner sep=2.8pt, fill=white},
+  lab/.style={font=\tiny, align=center, inner sep=1.2pt, fill=white}
+}
+\newcommand{\cnum}[1]{\textbf{\textcircled{\raisebox{-0.4pt}{\tiny #1}}}}
+
 \begin{document}
 
 \title{UniBus Live: A Real-Time Bilingual University Bus\\
@@ -203,138 +211,100 @@ administration console, (iii)~a central application server, and (iv)~a
 vehicle GPS-acquisition layer. The components communicate over a combination
 of stateless REST calls for command/query operations and a persistent
 WebSocket channel for low-latency push of live vehicle state.
-Fig.~\ref{fig:architecture} shows the overall architecture, and
-Fig.~\ref{fig:dataflow} follows one position report on its journey from
-the bus to a passenger's screen.
+Figs.~\ref{fig:sources}--\ref{fig:deliver} walk through the
+architecture piece by piece: where the bus position comes from, how it
+reaches the server, what the server does with each report, and who
+sees the result.
+\suppressfloats[t]%
 
-\begin{figure}[!t]
+\begin{figure}[t]
 \centering
-\begin{tikzpicture}[
-  font=\scriptsize,
-  arr/.style={-{Latex[length=1.9mm,width=1.6mm]}, semithick, draw=black!80},
-  barr/.style={-{Latex[length=1.9mm,width=1.6mm]}, semithick, draw=black!80, densely dashed},
-  blk/.style={draw=black!65, rounded corners=1.4pt, align=center, inner sep=3pt, fill=white},
-  lab/.style={font=\tiny, align=center, inner sep=1.2pt, fill=white},
-  zone/.style={draw=black!50, densely dashed, rounded corners=3pt, inner sep=3.8mm},
-  zlab/.style={font=\tiny\bfseries\scshape, text=black!60, fill=white, inner sep=1.5pt}
-]
-% ================= ON THE BUS =================
+\begin{tikzpicture}[font=\scriptsize]
 \node[blk, fill=green!14, text width=40mm] (gt)
-  {\textbf{GPS tracker}\\[-1pt]
-   {\tiny fixed inside the bus $\cdot$ \textbf{main source}}\\[-2pt]
-   {\tiny works by itself --- no driver needed}\\[-2pt]
-   {\tiny sends position every 5\,s}};
-\node[blk, fill=green!7, densely dashed, text width=25mm,
-      anchor=north west] (ph) at ($(gt.north east)+(6mm,0)$)
-  {\textbf{Driver's phone}\\[-1pt]
-   {\tiny \textbf{backup only}}\\[-2pt]
-   {\tiny takes over if the}\\[-2pt]
-   {\tiny tracker goes silent}};
-\node[zone, fit=(gt)(ph), inner sep=3mm] (vzone) {};
-\node[zlab, anchor=west] at ($(vzone.north west)+(2.5mm,0)$) {On the bus};
+  {\textbf{GPS tracker --- main source}\\[-1pt]
+   {\tiny fixed in the bus $\cdot$ works by itself}\\[-2pt]
+   {\tiny no driver $\cdot$ reports every 5\,s}};
+\node[blk, fill=green!7, densely dashed, text width=35mm, anchor=north west]
+  (ph) at ($(gt.north east)+(5mm,0)$)
+  {\textbf{Driver's phone --- backup}\\[-1pt]
+   {\tiny steps in automatically only}\\[-2pt]
+   {\tiny if the tracker goes silent}};
+\node[blk, fill=blue!7, text width=52mm, inner sep=2.2pt] (out)
+  at ($(gt.south east)!0.5!(ph.south west)+(0,-8.5mm)$)
+  {\tiny one steady stream of position reports};
+\draw[arr]  (gt.south) -- (gt.south |- out.north);
+\draw[barr] (ph.south) -- (ph.south |- out.north);
+\end{tikzpicture}
+\caption{Where the bus position comes from. The fixed GPS tracker is the
+main source and needs no driver; the driver's phone is only an
+automatic backup.}
+\label{fig:sources}
+\end{figure}
 
-% ================= SERVER =================
-\node[blk, fill=blue!12, text width=32mm, below=10mm of gt] (trac)
-  {\textbf{GPS gateway} (Traccar)\\[-1pt]
-   {\tiny receives and decodes the}\\[-2pt]
-   {\tiny tracker's raw messages}};
-\node[blk, fill=blue!8, text width=68mm, anchor=north]
-  (app) at ($(vzone.center |- trac.south)+(0,-10.5mm)$)
-  {\textbf{UniBus application server}\\[-1pt]
-   {\tiny checks the data, picks the best source, calculates}\\[-2pt]
-   {\tiny arrival times, follows each trip, broadcasts live updates}\\[-2pt]
-   {\tiny (the step-by-step journey is shown in Fig.~\ref{fig:dataflow})}};
-\node[blk, fill=orange!14, text width=31mm, below=3mm of app.south west, anchor=north west] (pg)
-  {\textbf{Database} (PostgreSQL)\\[-1pt]{\tiny stores all system data}};
-\node[blk, fill=orange!14, text width=31mm, below=3mm of app.south east, anchor=north east] (rd)
-  {\textbf{Live relay} (Redis)\\[-1pt]{\tiny distributes instant updates}};
-\draw[arr] ($(app.south)+(-22mm,0)$) -- ($(app.south)+(-22mm,0)$ |- pg.north);
-\draw[arr] ($(app.south)+(22mm,0)$) -- ($(app.south)+(22mm,0)$ |- rd.north);
-\node[zone, fit=(trac)(app)(pg)(rd)] (svzone) {};
-\node[zlab, anchor=west] at ($(svzone.north west)+(2.5mm,0)$) {University server};
+\begin{figure}[t]
+\centering
+\resizebox{\columnwidth}{!}{%
+\begin{tikzpicture}[font=\scriptsize]
+\node[blk, fill=green!14, text width=19mm] (gt)
+  {\textbf{GPS tracker}\\[-1pt]{\tiny on the bus}};
+\node[blk, fill=blue!12, text width=24mm, right=13.5mm of gt] (trac)
+  {\textbf{GPS gateway}\\[-1pt]{\tiny (Traccar) decodes}\\[-2pt]{\tiny the raw messages}};
+\node[blk, fill=blue!8, text width=20mm, right=12.5mm of trac] (app)
+  {\textbf{UniBus}\\[-1pt]\textbf{server}};
+\node[blk, fill=green!7, densely dashed, text width=19mm, below=6.5mm of gt] (ph)
+  {\textbf{Driver's}\\[-1pt]\textbf{phone}};
+\draw[arr] (gt) -- (trac)
+  node[lab, midway, yshift=0.2mm] {every 5\,s\\(mobile\\network)};
+\draw[arr] (trac) -- (app)
+  node[lab, midway, yshift=0.2mm] {instantly\\($\sim$1\,s)};
+\draw[barr] (ph.east) -- ++(4mm,0) -| ($(app.south)+(0,-0.1mm)$)
+  node[lab, pos=0.25, anchor=north, yshift=-0.6mm] {backup path (internet)};
+\end{tikzpicture}}
+\caption{How position reports travel from the bus to the UniBus server.}
+\label{fig:ingest}
+\end{figure}
 
-% ================= USERS =================
-\node[blk, fill=black!6, text width=33mm, anchor=north west] (pass)
-  at ($(svzone.south west)+(3.8mm,-8.5mm)$)
+\begin{figure}[t]
+\centering
+\resizebox{\columnwidth}{!}{%
+\begin{tikzpicture}[font=\scriptsize,
+  st/.style={blk, fill=blue!9, text width=18.5mm, inner sep=2pt, minimum height=13.5mm}]
+\node[st] (a) {\cnum{1}\\[-1pt]{\tiny pick the best}\\[-2pt]{\tiny source (tracker}\\[-2pt]{\tiny first, phone backup)}};
+\node[st, right=4.5mm of a] (b) {\cnum{2}\\[-1pt]{\tiny drop bad readings}\\[-2pt]{\tiny (inaccurate or}\\[-2pt]{\tiny jumpy fixes)}};
+\node[st, right=4.5mm of b] (c) {\cnum{3}\\[-1pt]{\tiny update arrival}\\[-2pt]{\tiny times for every}\\[-2pt]{\tiny stop ahead}};
+\node[st, right=4.5mm of c] (d) {\cnum{4}\\[-1pt]{\tiny push the update}\\[-2pt]{\tiny to everyone}\\[-2pt]{\tiny tracking the bus}};
+\draw[arr] (a) -- (b); \draw[arr] (b) -- (c); \draw[arr] (c) -- (d);
+\node[font=\tiny, align=center, below=2.6mm of $(b.south)!0.5!(c.south)$]
+  {every accepted update is saved in the database (PostgreSQL)\\[-2pt]
+   and relayed instantly to connected phones (Redis)};
+\end{tikzpicture}}
+\caption{What the server does with every incoming report (details in
+Sections~\ref{sec:impl-arbitration}--\ref{sec:impl-eta}).}
+\label{fig:pipeline}
+\end{figure}
+
+\begin{figure}[t]
+\centering
+\begin{tikzpicture}[font=\scriptsize]
+\node[blk, fill=blue!8, text width=66mm, inner sep=2.4pt] (app)
+  {\textbf{UniBus server} {\tiny --- live positions, arrival times, alerts}};
+\node[blk, fill=black!6, text width=33mm, anchor=north]
+  (pass) at ($(app.south)+(-17.5mm,-9.5mm)$)
   {\textbf{Passenger app}\\[-1pt]
    {\tiny live map $\cdot$ arrival times}\\[-2pt]
    {\tiny English $+$ Bangla $\cdot$ alerts}};
-\node[blk, fill=black!6, text width=33mm, anchor=north east] (adm)
-  at ($(svzone.south east)+(-3.8mm,-8.5mm)$)
+\node[blk, fill=black!6, text width=30mm, anchor=north]
+  (adm) at ($(app.south)+(17.5mm,-9.5mm)$)
   {\textbf{Admin website}\\[-1pt]
    {\tiny routes $\cdot$ schedules $\cdot$ buses}\\[-2pt]
-   {\tiny live overview of the fleet}};
-\node[zone, fit=(pass)(adm), inner sep=2.8mm] (uzone) {};
-\node[zlab] at (uzone.north) {Users};
-
-% ================= ARROWS =================
-\draw[arr] (gt.south) -- (trac.north)
-  node[lab, pos=0.38, anchor=west, xshift=1mm] {position every 5\,s\\(mobile network)};
-\draw[barr] (ph.south) -- (ph.south |- app.north)
-  node[lab, pos=0.42, anchor=west, xshift=0.8mm] {backup positions\\(internet)};
-\coordinate (tD) at (trac.south);
-\draw[arr] (tD) -- (tD |- app.north)
-  node[lab, midway, anchor=east, xshift=-0.8mm] {every new position,\\within $\sim$1\,s};
-\coordinate (pA) at ($(svzone.south west)+(14mm,0)$);
-\coordinate (aA) at ($(svzone.south east)+(-14mm,0)$);
-\draw[arr] (pA |- svzone.south) -- (pA |- pass.north)
-  node[lab, midway, anchor=west, xshift=0.8mm] {live position $+$\\arrival times};
-\draw[barr] (aA |- svzone.south) -- (aA |- adm.north)
-  node[lab, midway, anchor=east, xshift=-0.8mm] {manage\\the fleet};
-
-% ================= LEGEND =================
-\node[anchor=north, font=\tiny] at ($(uzone.south)+(0,-1.6mm)$)
-  {\tikz{\draw[arr] (0,0) -- (4.5mm,0);}\, live location data\qquad
-   \tikz{\draw[barr] (0,0) -- (4.5mm,0);}\, backup / management traffic};
+   {\tiny live view of the whole fleet}};
+\draw[arr] ($(app.south)+(-17.5mm,0)$) -- (pass.north)
+  node[lab, midway, anchor=east, xshift=-0.8mm] {pushed live};
+\draw[barr] ($(app.south)+(17.5mm,0)$) -- (adm.north)
+  node[lab, midway, anchor=west, xshift=0.8mm] {secure web};
 \end{tikzpicture}
-\caption{Overall architecture of UniBus Live. The bus position comes
-mainly from a fixed GPS tracker that works with no driver involvement;
-the driver's phone is only an automatic backup. A single low-cost
-cloud server receives, checks, and enriches the data, then delivers
-live updates to the passenger app and the admin website.}
-\label{fig:architecture}
-\end{figure}
-
-\begin{figure}[!t]
-\centering
-\resizebox{0.98\columnwidth}{!}{%
-\begin{tikzpicture}[
-  font=\scriptsize,
-  stp/.style={draw=black!65, rounded corners=1.4pt, align=center, fill=blue!8,
-               text width=70mm, inner sep=2.6pt},
-  res/.style={draw=black!70, rounded corners=1.4pt, align=center, fill=green!14,
-              text width=70mm, inner sep=3pt},
-  sarr/.style={-{Latex[length=1.6mm,width=1.4mm]}, semithick, draw=black!75}
-]
-\newcommand{\stnum}[1]{\textbf{\textcircled{\raisebox{-0.4pt}{\tiny #1}}}}
-\node[stp] (a)
-  {\stnum{1} \textbf{The bus reports where it is}\\[-1pt]
-   {\tiny the on-board GPS tracker sends its position every 5\,s while moving}};
-\node[stp, below=2.2mm of a] (b)
-  {\stnum{2} \textbf{The server receives the report}\\[-1pt]
-   {\tiny the GPS gateway (Traccar) decodes it and hands it over within $\sim$1\,s}};
-\node[stp, below=2.2mm of b] (c)
-  {\stnum{3} \textbf{The best source is chosen}\\[-1pt]
-   {\tiny the tracker is always preferred; the driver's phone is used only if the tracker goes silent}};
-\node[stp, below=2.2mm of c] (d)
-  {\stnum{4} \textbf{Bad readings are thrown away}\\[-1pt]
-   {\tiny inaccurate fixes, impossible jumps, and small GPS jitter are all rejected}};
-\node[stp, below=2.2mm of d] (e)
-  {\stnum{5} \textbf{Arrival times are recalculated}\\[-1pt]
-   {\tiny remaining distance along the route $\div$ recent average speed, for every stop ahead}};
-\node[stp, below=2.2mm of e] (f)
-  {\stnum{6} \textbf{Everyone tracking the bus is updated}\\[-1pt]
-   {\tiny the update is saved and instantly pushed to every passenger following that trip}};
-\node[res, below=2.6mm of f] (g)
-  {\textbf{Result: the map moves and arrival times refresh on the passenger's phone}\\[-1pt]
-   {\tiny in the pilot, a position reached the server within a median of 5.9\,s of the GPS fix}};
-\foreach \x/\y in {a/b, b/c, c/d, d/e, e/f, f/g}{
-  \draw[sarr] (\x.south) -- (\y.north);}
-\end{tikzpicture}}%
-\caption{How one position report travels through the system, from the
-GPS fix on the bus to the passenger's screen. Steps 3--5 are detailed
-in Sections~\ref{sec:impl-arbitration}--\ref{sec:impl-eta}.}
-\label{fig:dataflow}
+\caption{Who receives the live data.}
+\label{fig:deliver}
 \end{figure}
 
 \subsection{Application Server}
