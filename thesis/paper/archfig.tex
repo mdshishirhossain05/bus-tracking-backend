@@ -1,0 +1,128 @@
+\documentclass[border=2pt]{standalone}
+\usepackage{tikz}
+\usetikzlibrary{positioning, arrows.meta, calc, fit}
+\begin{document}
+\begin{tikzpicture}[
+  font=\scriptsize,
+  arr/.style={-{Latex[length=1.9mm,width=1.6mm]}, semithick, draw=black!80},
+  rarr/.style={-{Latex[length=1.9mm,width=1.6mm]}, semithick, draw=black!80, densely dashed},
+  blk/.style={draw=black!65, rounded corners=1.4pt, align=center, inner sep=2.6pt, fill=white},
+  lab/.style={font=\tiny, align=center, inner sep=1.2pt, fill=white},
+  zone/.style={draw=black!50, densely dashed, rounded corners=3pt, inner sep=3.5pt},
+  zlab/.style={font=\tiny\bfseries\scshape, text=black!60, fill=white, inner sep=1.5pt},
+  stage/.style={blk, fill=blue!9, text width=62mm, inner sep=2.2pt},
+  num/.style={font=\bfseries},
+  sarr/.style={-{Latex[length=1.4mm,width=1.3mm]}, draw=black!70}
+]
+\newcommand{\cnum}[1]{\textbf{\textcircled{\raisebox{-0.4pt}{\tiny #1}}}}
+% ================= VEHICLE LAYER =================
+\node[blk, fill=green!14, text width=40mm] (gt)
+  {\textbf{GPS tracker (Concox GT06S)}\\[-1.5pt]
+   {\tiny hard-wired GPS$+$GSM unit}\\[-2pt]
+   {\tiny \textbf{primary} $\cdot$ autonomous source}\\[-2pt]
+   {\tiny no driver device or action needed}\\[-2pt]
+   {\tiny reports 5\,s moving / 300\,s parked}};
+\node[blk, fill=green!7, densely dashed, text width=22mm,
+      anchor=north west] (ph) at ($(gt.north east)+(5mm,0)$)
+  {\textbf{Driver phone}\\[-1.5pt]
+   {\tiny \textbf{optional} fallback}\\[-2pt]
+   {\tiny foreground}\\[-2pt]
+   {\tiny location app}};
+\node[zone, fit=(gt)(ph)] (vzone) {};
+\node[zlab, anchor=west] at ($(vzone.north west)+(2.5mm,0)$) {Vehicle layer};
+
+% ================= TRACCAR =================
+\node[blk, fill=blue!12, text width=38mm, below=11.5mm of gt] (trac)
+  {\textbf{Traccar telematics server}\\[-1.5pt]
+   {\tiny device-protocol decoding}\\[-2pt]
+   {\tiny REST API $\cdot$ WebSocket feed}};
+
+% ================= APPLICATION SERVER =================
+\node[stage, anchor=north] (s1) at ($(vzone.center |- trac.south)+(0,-16.5mm)$)
+  {\cnum{1} \textbf{Source arbitration}\\[-1.5pt]
+   {\tiny health score $+$ priority rank $\rightarrow$ canonical position}};
+\node[stage, below=1.3mm of s1] (s2)
+  {\cnum{2} \textbf{Quality filter}\\[-1.5pt]
+   {\tiny accuracy gate $\cdot$ teleport guard $\cdot$ 4\,m floor $\cdot$ freeze}};
+\node[stage, below=1.3mm of s2] (s3)
+  {\cnum{3} \textbf{ETA engine}\\[-1.5pt]
+   {\tiny polyline projection $\cdot$ rolling speed $\cdot$ confidence label}};
+\node[stage, below=1.3mm of s3] (s4)
+  {\cnum{4} \textbf{Trip lifecycle}\\[-1.5pt]
+   {\tiny planned $\rightarrow$ pre-trip $\rightarrow$ running $\rightarrow$ ended $\cdot$ staleness}};
+\node[stage, below=1.3mm of s4] (s5)
+  {\cnum{5} \textbf{Realtime hub}\\[-1.5pt]
+   {\tiny Socket.IO per-trip rooms $\cdot$ Redis pub/sub fan-out}};
+\node[blk, fill=orange!14, text width=29mm, below=3mm of s5.south west, anchor=north west] (pg)
+  {\textbf{PostgreSQL}\\[-1.5pt]{\tiny Prisma $\cdot$ 31 models}};
+\node[blk, fill=orange!14, text width=25mm, below=3mm of s5.south east, anchor=north east] (rd)
+  {\textbf{Redis}\\[-1.5pt]{\tiny cache $\cdot$ pub/sub}};
+\node[font=\scriptsize\bfseries, inner sep=1pt, above=2.2mm of s1] (srvtitle)
+  {Application server (Node.js $\cdot$ TypeScript $\cdot$ Express)};
+% server outer box
+\node[blk, fill=blue!4, inner sep=2.8mm, fit=(srvtitle)(s1)(s5)(pg)(rd)] (srv) {};
+\begin{scope}% redraw contents above the outer fill
+  \node[font=\scriptsize\bfseries, inner sep=1pt] at (srvtitle)
+    {Application server (Node.js $\cdot$ TypeScript $\cdot$ Express)};
+  \node[stage] at (s1) {\cnum{1} \textbf{Source arbitration}\\[-1.5pt]
+    {\tiny health score $+$ priority rank $\rightarrow$ canonical position}};
+  \node[stage] at (s2) {\cnum{2} \textbf{Quality filter}\\[-1.5pt]
+    {\tiny accuracy gate $\cdot$ teleport guard $\cdot$ 4\,m floor $\cdot$ freeze}};
+  \node[stage] at (s3) {\cnum{3} \textbf{ETA engine}\\[-1.5pt]
+    {\tiny polyline projection $\cdot$ rolling speed $\cdot$ confidence label}};
+  \node[stage] at (s4) {\cnum{4} \textbf{Trip lifecycle}\\[-1.5pt]
+    {\tiny planned $\rightarrow$ pre-trip $\rightarrow$ running $\rightarrow$ ended $\cdot$ staleness}};
+  \node[stage] at (s5) {\cnum{5} \textbf{Realtime hub}\\[-1.5pt]
+    {\tiny Socket.IO per-trip rooms $\cdot$ Redis pub/sub fan-out}};
+  \node[blk, fill=orange!14, text width=29mm] at (pg)
+    {\textbf{PostgreSQL}\\[-1.5pt]{\tiny Prisma $\cdot$ 31 models}};
+  \node[blk, fill=orange!14, text width=25mm] at (rd)
+    {\textbf{Redis}\\[-1.5pt]{\tiny cache $\cdot$ pub/sub}};
+\end{scope}
+\foreach \a/\b in {s1/s2, s2/s3, s3/s4, s4/s5}{
+  \draw[sarr] (\a.south) -- (\b.north);}
+\draw[sarr] (s5.south -| pg) -- (pg.north);
+\draw[sarr] (s5.south -| rd) -- (rd.north);
+
+% ================= VPS ZONE =================
+\node[zone, fit=(trac)(srv), inner sep=3.5mm] (vps) {};
+\node[zlab, anchor=west] at ($(vps.north west)+(2.5mm,0)$) {Self-hosted VPS};
+
+% ================= CLIENTS =================
+\node[blk, fill=black!6, text width=32mm, anchor=north west] (pass)
+  at ($(srv.south west)+(0,-11mm)$)
+  {\textbf{Passenger app} (React Native)\\[-1.5pt]
+   {\tiny bilingual (EN/BN) $\cdot$ live map}\\[-2pt]
+   {\tiny per-stop ETA $\cdot$ push alerts}};
+\node[blk, fill=black!6, text width=30mm, anchor=north east] (adm)
+  at ($(srv.south east)+(0,-11mm)$)
+  {\textbf{Web admin} (Next.js)\\[-1.5pt]
+   {\tiny fleet $\cdot$ routes $\cdot$ schedules}\\[-2pt]
+   {\tiny devices $\cdot$ live ops map}};
+\node[zone, fit=(pass)(adm)] (czone) {};
+\node[zlab] at (czone.north) {Clients};
+
+% ================= MAIN ARROWS =================
+\draw[arr] (gt.south) -- (trac.north)
+  node[lab, midway, anchor=west, xshift=1mm] {GT06 protocol (TCP/GSM)};
+\draw[rarr] (ph.south) -- (ph.south |- srv.north)
+  node[lab, pos=0.40, anchor=west, xshift=0.8mm] {authenticated\\REST (HTTPS)};
+\coordinate (tL) at ($(trac.south)+(-7mm,0)$);
+\coordinate (tR) at ($(trac.south)+(7mm,0)$);
+\draw[arr] (tL) -- (tL |- srv.north)
+  node[lab, pos=0.45, anchor=east, xshift=-0.8mm] {WS push ($\sim$1\,s)};
+\draw[rarr] (tR) -- (tR |- srv.north)
+  node[lab, pos=0.45, anchor=west, xshift=0.8mm] {REST poll 8\,s (60\,s idle)};
+\coordinate (pA) at ($(srv.south west)+(9mm,0)$);
+\coordinate (aA) at ($(srv.south east)+(-9mm,0)$);
+\draw[arr] (pA) -- (pA |- pass.north)
+  node[lab, pos=0.5, anchor=west, xshift=0.8mm] {Socket.IO trip room:\\position $\cdot$ ETA $\cdot$ alerts};
+\draw[rarr] (aA) -- (aA |- adm.north)
+  node[lab, pos=0.5, anchor=east, xshift=-0.8mm] {REST\\manage};
+
+% ================= LEGEND =================
+\node[anchor=north, font=\tiny, align=left] at ($(czone.south)+(0,-2.2mm)$)
+  {\tikz{\draw[arr] (0,0) -- (4.5mm,0);}\, live telemetry / realtime push\qquad
+   \tikz{\draw[rarr] (0,0) -- (4.5mm,0);}\, REST command / query};
+\end{tikzpicture}
+\end{document}
