@@ -272,12 +272,12 @@ a position report from the bus to the passenger's screen.
    {\tiny live operations map}};
 % ---------- connections (all verticals aligned to fixed x) ----------
 \draw[arr]  (-29,-11) -- (-29,-19.8)
-  node[lab, midway, anchor=west, xshift=0.9mm] {every 5\,s\\TCP over GSM};
+  node[lab, midway, anchor=east, xshift=-0.9mm] {every 5\,s\\TCP over GSM};
 \draw[barr] ( 27,-11) -- ( 27,-19.8)
   node[lab, midway, anchor=west, xshift=0.9mm] {REST / HTTPS\\(fallback)};
-\draw[arr]  (-19,-23.8) -- (-5,-23.8)
+\draw[arr]  (-19,-24.5) -- (-5,-24.5)
   node[lab, midway, anchor=south, yshift=0.4mm, fill=black!4] {WebSocket\\($\approx$1\,s)};
-\draw[bbarr] (-19,-28.8) -- (-5,-28.8)
+\draw[bbarr] (-19,-29.3) -- (-5,-29.3)
   node[lab, midway, anchor=north, yshift=-0.4mm, fill=black!4] {REST poll\\(backup)};
 \draw[darr] ( 6,-32.3) -- ( 6,-37.0);
 \draw[darr] (28,-32.3) -- (28,-37.0);
@@ -306,33 +306,29 @@ backend components share one low-cost cloud server.}
   sarr/.style={-{Latex[length=1.5mm,width=1.3mm]}, semithick, draw=black!70},
   phl/.style={font=\tiny\bfseries\scshape, text=acc, rotate=90, anchor=south}]
 % ---- steps on a uniform grid: height 8.8, gap 2.4 ----
-\node[stp] (s1) at (0,0)
-  {\stepnum{1} \textbf{GPS fix captured on the bus}\\[-0.5pt]
-   {\tiny\color{black!65} captured every 5\,s while the bus is moving}};
-\node[stp] (s2) at (0,-11.2)
-  {\stepnum{2} \textbf{Transmitted and decoded}\\[-0.5pt]
-   {\tiny\color{black!65} sent over the cellular network; decoded in $\approx$1\,s}};
-\node[stp] (s3) at (0,-22.4)
-  {\stepnum{3} \textbf{Best source selected}\\[-0.5pt]
-   {\tiny\color{black!65} tracker preferred; phone covers tracker outages}};
-\node[stp] (s4) at (0,-33.6)
-  {\stepnum{4} \textbf{Faulty readings rejected}\\[-0.5pt]
-   {\tiny\color{black!65} inaccurate fixes, impossible jumps and jitter removed}};
-\node[stp] (s5) at (0,-44.8)
-  {\stepnum{5} \textbf{Arrival times calculated}\\[-0.5pt]
-   {\tiny\color{black!65} remaining distance $\div$ recent speed, per stop ahead}};
-\node[stp] (s6) at (0,-56.0)
-  {\stepnum{6} \textbf{Stored and published}\\[-0.5pt]
-   {\tiny\color{black!65} saved in PostgreSQL; published through Redis}};
-\node[stp] (s7) at (0,-67.2)
-  {\stepnum{7} \textbf{Pushed to every subscribed phone}\\[-0.5pt]
-   {\tiny\color{black!65} WebSocket delivers position and new arrival times}};
-\node[stp, fill=green!11, draw=green!45!black!45] (res) at (0,-78.4)
+\foreach \y/\n/\t/\d in {
+  0/1/{GPS fix captured on the bus}/{captured every 5\,s while the bus is moving},
+  -11.2/2/{Transmitted and decoded}/{sent over the cellular network; decoded in $\approx$1\,s},
+  -22.4/3/{Best source selected}/{tracker preferred; phone covers tracker outages},
+  -33.6/4/{Faulty readings rejected}/{inaccurate fixes, impossible jumps and jitter removed},
+  -44.8/5/{Arrival times calculated}/{remaining distance $\div$ recent speed, per stop ahead},
+  -56.0/6/{Stored and published}/{saved in PostgreSQL; published through Redis},
+  -67.2/7/{Pushed to every subscribed phone}/{WebSocket delivers position and new arrival times}}{
+  \draw[draw=black!35, rounded corners=1.6pt, fill=blue!6]
+    (-30.75,\y) rectangle (30.75,\y-8.8);
+  \node[circle, fill=acc, text=white, inner sep=0.25mm, minimum size=3.4mm,
+        font=\tiny\bfseries] at (-26.8,\y-4.4) {\n};
+  \node[anchor=west, align=left, inner sep=0pt] at (-23.6,\y-4.4)
+    {\textbf{\t}\\[-0.5pt]{\tiny\color{black!65} \d}};
+}
+\draw[draw=green!45!black!45, rounded corners=1.6pt, fill=green!11]
+  (-30.75,-78.4) rectangle (30.75,-87.2);
+\node[align=center] at (0,-82.8)
   {\textbf{Result: passenger's map \& ETAs refresh}\\[-0.5pt]
    {\tiny\color{black!65} GPS fix $\rightarrow$ server: median 5.9\,s (mean 7.4\,s)}};
 % ---- identical arrows (2.4 mm each) ----
-\foreach \a/\b in {s1/s2, s2/s3, s3/s4, s4/s5, s5/s6, s6/s7, s7/res}{
-  \draw[sarr] (\a.south) -- (\b.north);}
+\foreach \y in {-8.8,-20.0,-31.2,-42.4,-53.6,-64.8,-76.0}{
+  \draw[sarr] (0,\y) -- (0,\y-2.4);}
 % ---- phase bars (left, uniform) ----
 \foreach \ya/\yb/\nm in {0/-20.0/Acquisition, -22.4/-53.6/Processing, -56.0/-76.0/Delivery}{
   \draw[acc!55, line width=1mm, line cap=round] (-32.6,\ya-0.6) -- (-32.6,\yb-0.6);}
