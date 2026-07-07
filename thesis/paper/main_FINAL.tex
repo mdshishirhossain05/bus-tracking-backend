@@ -23,17 +23,21 @@
 \def\BibTeX{{\rm B\kern-.05em{\sc i\kern-.025em b}\kern-.08em
   T\kern-.1667em\lower.7ex\hbox{E}\kern-.125emX}}
 
+\definecolor{acc}{RGB}{28,60,102}
+\newcommand{\stepnum}[1]{\tikz[baseline=-0.62ex]{\node[circle,fill=acc,text=white,
+  inner sep=0.25mm, minimum size=3.1mm, font=\tiny\bfseries]{#1};}}
 \tikzset{
   arr/.style={-{Latex[length=1.8mm,width=1.5mm]}, semithick, draw=black!80},
   barr/.style={-{Latex[length=1.8mm,width=1.5mm]}, semithick, draw=black!80, densely dashed},
-  blk/.style={draw=black!65, rounded corners=1.4pt, align=center, inner sep=2.6pt, fill=white},
-  lab/.style={font=\tiny, align=center, inner sep=1.2pt, fill=white},
   bbarr/.style={{Latex[length=1.8mm,width=1.5mm]}-{Latex[length=1.8mm,width=1.5mm]},
     semithick, draw=black!80, densely dashed},
-  darr/.style={{Latex[length=1.6mm,width=1.4mm]}-{Latex[length=1.6mm,width=1.4mm]},
+  darr/.style={{Latex[length=1.5mm,width=1.3mm]}-{Latex[length=1.5mm,width=1.3mm]},
     semithick, draw=black!80},
-  zone/.style={draw=black!50, densely dashed, rounded corners=3pt},
-  zlab/.style={font=\tiny\bfseries\scshape, text=black!60, fill=white, inner sep=1.5pt}
+  blk/.style={draw=black!45, rounded corners=1.6pt, align=center, inner sep=2.4pt, fill=white},
+  lab/.style={font=\tiny, align=center, inner sep=1.2pt, fill=white},
+  panel/.style={fill=black!4, draw=black!25, rounded corners=3.5pt},
+  zlab/.style={font=\tiny\bfseries\scshape, text=acc, fill=white, inner sep=1.6pt},
+  zone/.style={draw=black!50, densely dashed, rounded corners=3pt}
 }
 \newcommand{\cnum}[1]{\textbf{\textcircled{\raisebox{-0.4pt}{\tiny #1}}}}
 
@@ -224,129 +228,123 @@ a position report from the bus to the passenger's screen.
 \begin{figure}[H]
 \centering
 \resizebox{\columnwidth}{!}{%
-\begin{tikzpicture}[font=\scriptsize]
-% ---- vehicle layer
-\node[blk, fill=green!14, text width=40mm] (gt)
+\begin{tikzpicture}[font=\scriptsize, x=1mm, y=1mm]
+% ---------- layer panels (drawn first, boxes on top) ----------
+\draw[panel] (-42, 2.2) rectangle ( 42,-13.2);
+\draw[panel] (-42,-17.6) rectangle ( 42,-48.0);
+\draw[panel] (-42,-52.4) rectangle ( 42,-67.5);
+\node[zlab] at (0, 2.2)  {Vehicle Layer};
+\node[zlab] at (0,-17.6) {Backend (single low-cost server)};
+\node[zlab] at (0,-52.4) {Client Layer};
+% ---------- vehicle layer ----------
+\node[blk, fill=green!12, text width=40mm, minimum height=11mm, anchor=north] (gt) at (-19,0)
   {\textbf{GPS Tracker} (Concox GT06S)\\[-1pt]
    {\tiny \textbf{primary source} --- fully automatic}\\[-2pt]
    {\tiny fixed in the bus, no driver needed}};
-\node[blk, fill=green!7, densely dashed, text width=28mm, anchor=north west]
-  (ph) at ($(gt.north east)+(5.5mm,0)$)
+\node[blk, fill=green!7, densely dashed, text width=28mm, minimum height=11mm, anchor=north]
+  (ph) at (27,0)
   {\textbf{Driver Smartphone}\\[-1pt]
    {\tiny \textbf{automatic fallback}}\\[-2pt]
    {\tiny used only if needed}};
-\node[zone, inner sep=2.6mm, fit=(gt)(ph)] (vzone) {};
-\node[zlab, anchor=west] at ($(vzone.north west)+(2.5mm,0)$) {Vehicle Layer};
-
-% ---- backend layer
-\node[blk, fill=blue!12, text width=24mm, below=10.5mm of gt.south west, anchor=north west] (trac)
-  {\textbf{Telematics}\\[-1pt]\textbf{Gateway}\\[-1pt]{\tiny (Traccar) decodes}\\[-2pt]{\tiny tracker messages}};
-\node[blk, fill=blue!8, text width=44mm, anchor=north west]
-  (app) at ($(trac.north east)+(12mm,0)$)
+% ---------- backend layer ----------
+\node[blk, fill=blue!10, text width=20mm, minimum height=12.5mm, anchor=north] (trac) at (-29,-19.8)
+  {\textbf{Telematics}\\[-2pt]\textbf{Gateway}\\[-1pt]
+   {\tiny (Traccar) decodes}\\[-2pt]{\tiny tracker messages}};
+\node[blk, fill=blue!7, text width=44mm, minimum height=12.5mm, anchor=north] (app) at (17,-19.8)
   {\textbf{Application Server} {\tiny(Node.js)}\\[-1pt]
    {\tiny Source Selection $\cdot$ Data Validation}\\[-2pt]
    {\tiny ETA Calculation $\cdot$ Trip Monitoring}\\[-2pt]
    {\tiny Real-Time Broadcast}};
-\node[blk, fill=orange!14, text width=34mm, anchor=north]
-  (pg) at ($(trac.south west)!0.28!(app.south east)+(0,-4mm)$)
-  {\textbf{PostgreSQL Database}\\[-1pt]{\tiny all trips, routes \& users}};
-\node[blk, fill=orange!14, text width=32mm, anchor=north]
-  (rd) at ($(trac.south west)!0.78!(app.south east)+(0,-4mm)$)
-  {\textbf{Redis} (cache \& pub/sub)\\[-1pt]{\tiny instant update distribution}};
-\node[zone, inner sep=2.8mm, fit=(trac)(app)(pg)(rd)] (bzone) {};
-\node[zlab, anchor=west] at ($(bzone.north west)+(2.5mm,0)$) {Backend Server};
-
-% ---- client layer
-\node[blk, fill=black!6, text width=36mm, anchor=north west] (pass)
-  at ($(bzone.south west)+(2.6mm,-9.5mm)$)
+\node[blk, fill=orange!12, text width=20mm, minimum height=8.5mm, anchor=north] (pg) at (6,-37.0)
+  {\textbf{PostgreSQL}\\[-1pt]{\tiny database: trips,}\\[-2pt]{\tiny routes, users}};
+\node[blk, fill=orange!12, text width=20mm, minimum height=8.5mm, anchor=north] (rd) at (28,-37.0)
+  {\textbf{Redis}\\[-1pt]{\tiny cache $\cdot$ pub/sub}\\[-2pt]{\tiny instant delivery}};
+\node[font=\tiny\itshape, text=black!55, align=center] at (-29,-41.1)
+  {everything runs on\\[-2pt]one server --- no external\\[-2pt]services needed};
+% ---------- client layer ----------
+\node[blk, fill=black!6, text width=36mm, minimum height=10.5mm, anchor=north] (pass) at (-21,-54.6)
   {\textbf{Passenger Mobile App}\\[-1pt]
    {\tiny live map $\cdot$ arrival times $\cdot$ alerts}\\[-2pt]
    {\tiny bilingual English/Bangla}};
-\node[blk, fill=black!6, text width=34mm, anchor=north east] (adm)
-  at ($(bzone.south east)+(-2.6mm,-9.5mm)$)
+\node[blk, fill=black!6, text width=36mm, minimum height=10.5mm, anchor=north] (adm) at (21,-54.6)
   {\textbf{Admin Dashboard}\\[-1pt]
    {\tiny routes $\cdot$ schedules $\cdot$ fleet}\\[-2pt]
    {\tiny live operations map}};
-\node[zone, inner sep=2.6mm, fit=(pass)(adm)] (czone) {};
-\node[zlab] at (czone.north) {Client Layer};
-
-% ---- connections
-\draw[arr] (gt.south -| trac) -- (trac.north)
-  node[lab, midway, anchor=west, xshift=0.8mm] {every 5\,s\\TCP over GSM};
-\draw[barr] (ph.south) -- (ph.south |- app.north)
-  node[lab, pos=0.45, anchor=west, xshift=0.8mm] {REST / HTTPS\\(fallback)};
-\draw[arr] ($(trac.east)+(0,3.2mm)$) -- ($(app.west)+(0,3.2mm)$)
-  node[lab, midway, anchor=south, yshift=0.3mm] {WebSocket\\($\approx$1\,s)};
-\draw[bbarr] ($(trac.east)+(0,-3.6mm)$) -- ($(app.west)+(0,-3.6mm)$)
-  node[lab, midway, anchor=north, yshift=-0.3mm] {REST poll\\(backup)};
-\draw[darr, rounded corners=1.5pt] ($(app.south)+(-16mm,0)$) -- ++(0,-1.9mm) -| (pg.north);
-\draw[darr] (app.south -| rd) -- (rd.north);
-\coordinate (pX) at ($(pass.north)+(-4.5mm,0)$);
-\coordinate (pR) at ($(pass.north)+(6mm,0)$);
-\coordinate (aX) at ($(adm.north)+(0,0)$);
-\draw[arr] (pX |- bzone.south) -- (pX)
-  node[lab, midway, anchor=east, xshift=-0.8mm] {live location \& ETAs\\(WebSocket push)};
-\draw[bbarr] (pR |- bzone.south) -- (pR);
-\draw[bbarr] (aX |- bzone.south) -- (aX)
-  node[lab, midway, anchor=west, xshift=0.8mm] {REST API:\\manage \& query};
-% legend
-\node[anchor=north, font=\tiny] at ($(czone.south)+(0,-1.8mm)$)
+% ---------- connections (all verticals aligned to fixed x) ----------
+\draw[arr]  (-29,-11) -- (-29,-19.8)
+  node[lab, midway, anchor=west, xshift=0.9mm] {every 5\,s\\TCP over GSM};
+\draw[barr] ( 27,-11) -- ( 27,-19.8)
+  node[lab, midway, anchor=west, xshift=0.9mm] {REST / HTTPS\\(fallback)};
+\draw[arr]  (-19,-23.8) -- (-5,-23.8)
+  node[lab, midway, anchor=south, yshift=0.4mm, fill=black!4] {WebSocket\\($\approx$1\,s)};
+\draw[bbarr] (-19,-28.8) -- (-5,-28.8)
+  node[lab, midway, anchor=north, yshift=-0.4mm, fill=black!4] {REST poll\\(backup)};
+\draw[darr] ( 6,-32.3) -- ( 6,-37.0);
+\draw[darr] (28,-32.3) -- (28,-37.0);
+\draw[arr]  (-26,-48.0) -- (-26,-54.6)
+  node[lab, midway, anchor=east, xshift=-1.6mm] {WebSocket push:\\location \& ETAs};
+\draw[bbarr] (-13,-48.0) -- (-13,-54.6);
+\draw[bbarr] ( 21,-48.0) -- ( 21,-54.6)
+  node[lab, midway, anchor=west, xshift=0.9mm] {REST API:\\manage \& query};
+% ---------- legend ----------
+\node[anchor=north, font=\tiny] at (0,-69.4)
   {\tikz{\draw[arr] (0,0) -- (4.5mm,0);}\, real-time location data\qquad
    \tikz{\draw[bbarr] (0,0) -- (4.5mm,0);}\, request $\leftrightarrow$ response (REST)};
 \end{tikzpicture}}%
-\caption{UniBus Live system architecture. The fixed GPS tracker is the
-primary position source and operates with no driver involvement; the
-driver's smartphone serves only as an automatic fallback. All backend
-components run on a single low-cost cloud server.}
+\caption{UniBus Live system architecture. The GPS tracker is the primary,
+fully automatic source; the driver's smartphone is only a fallback. All
+backend components share one low-cost cloud server.}
 \label{fig:architecture}
 \end{figure}
 
 \begin{figure}[H]
 \centering
 \resizebox{0.97\columnwidth}{!}{%
-\begin{tikzpicture}[font=\scriptsize,
-  stp/.style={blk, fill=blue!8, text width=61mm, inner sep=2.3pt},
-  ph/.style={font=\tiny\bfseries\scshape, text=black!55, rotate=90, anchor=south}]
-\node[stp] (s1)
-  {\cnum{1} \textbf{GPS fix captured on the bus}\\[-1pt]
-   {\tiny captured every 5\,s while the bus is moving}};
-\node[stp, below=1.7mm of s1] (s2)
-  {\cnum{2} \textbf{Transmitted and decoded}\\[-1pt]
-   {\tiny sent over the cellular network; forwarded in $\approx$1\,s}};
-\node[stp, below=3.4mm of s2] (s3)
-  {\cnum{3} \textbf{Best source selected}\\[-1pt]
-   {\tiny tracker preferred --- the phone is used only when the tracker is silent}};
-\node[stp, below=1.7mm of s3] (s4)
-  {\cnum{4} \textbf{Faulty readings rejected}\\[-1pt]
-   {\tiny inaccurate positions, impossible jumps and GPS jitter are filtered out}};
-\node[stp, below=1.7mm of s4] (s5)
-  {\cnum{5} \textbf{Arrival times calculated}\\[-1pt]
-   {\tiny remaining distance $\div$ recent speed, for every stop ahead}};
-\node[stp, below=3.4mm of s5] (s6)
-  {\cnum{6} \textbf{Stored and published}\\[-1pt]
-   {\tiny saved in PostgreSQL; handed to Redis for instant distribution}};
-\node[stp, below=1.7mm of s6] (s7)
-  {\cnum{7} \textbf{Pushed to every subscribed phone}\\[-1pt]
-   {\tiny WebSocket delivers the position and new arrival times per trip}};
-\node[blk, fill=green!14, text width=61mm, inner sep=2.6pt, below=2.6mm of s7] (res)
-  {\textbf{Passenger's map moves; arrival times refresh}\\[-1pt]
-   {\tiny median delay, GPS fix to server: \textbf{5.9\,s} (measured in the pilot)}};
+\begin{tikzpicture}[font=\scriptsize, x=1mm, y=1mm,
+  stp/.style={draw=black!35, rounded corners=1.6pt, fill=blue!6, align=left,
+              text width=58mm, minimum height=8.8mm, inner sep=2.2pt, anchor=north},
+  sarr/.style={-{Latex[length=1.5mm,width=1.3mm]}, semithick, draw=black!70},
+  phl/.style={font=\tiny\bfseries\scshape, text=acc, rotate=90, anchor=south}]
+% ---- steps on a uniform grid: height 8.8, gap 2.4 ----
+\node[stp] (s1) at (0,0)
+  {\stepnum{1} \textbf{GPS fix captured on the bus}\\[-0.5pt]
+   {\tiny\color{black!65} captured every 5\,s while the bus is moving}};
+\node[stp] (s2) at (0,-11.2)
+  {\stepnum{2} \textbf{Transmitted and decoded}\\[-0.5pt]
+   {\tiny\color{black!65} sent over the cellular network; decoded in $\approx$1\,s}};
+\node[stp] (s3) at (0,-22.4)
+  {\stepnum{3} \textbf{Best source selected}\\[-0.5pt]
+   {\tiny\color{black!65} tracker preferred; phone covers tracker outages}};
+\node[stp] (s4) at (0,-33.6)
+  {\stepnum{4} \textbf{Faulty readings rejected}\\[-0.5pt]
+   {\tiny\color{black!65} inaccurate fixes, impossible jumps and jitter removed}};
+\node[stp] (s5) at (0,-44.8)
+  {\stepnum{5} \textbf{Arrival times calculated}\\[-0.5pt]
+   {\tiny\color{black!65} remaining distance $\div$ recent speed, per stop ahead}};
+\node[stp] (s6) at (0,-56.0)
+  {\stepnum{6} \textbf{Stored and published}\\[-0.5pt]
+   {\tiny\color{black!65} saved in PostgreSQL; published through Redis}};
+\node[stp] (s7) at (0,-67.2)
+  {\stepnum{7} \textbf{Pushed to every subscribed phone}\\[-0.5pt]
+   {\tiny\color{black!65} WebSocket delivers position and new arrival times}};
+\node[stp, fill=green!11, draw=green!45!black!45] (res) at (0,-78.4)
+  {\textbf{Result: passenger's map \& ETAs refresh}\\[-0.5pt]
+   {\tiny\color{black!65} GPS fix $\rightarrow$ server: median 5.9\,s (mean 7.4\,s)}};
+% ---- identical arrows (2.4 mm each) ----
 \foreach \a/\b in {s1/s2, s2/s3, s3/s4, s4/s5, s5/s6, s6/s7, s7/res}{
-  \draw[-{Latex[length=1.5mm,width=1.3mm]}, semithick, draw=black!75] (\a.south) -- (\b.north);}
-% phase brackets (left)
-\foreach \top/\bot/\name in {s1/s2/Acquisition, s3/s5/Processing, s6/s7/Delivery}{
-  \draw[black!55, line width=0.7pt]
-    ($(\top.north west)+(-2.2mm,0)$) -- ($(\top.north west)+(-3.4mm,0)$) --
-    ($(\bot.south west)+(-3.4mm,0)$) -- ($(\bot.south west)+(-2.2mm,0)$);}
-\node[ph] at ($(s1.north west)!0.5!(s2.south west)+(-5.6mm,0)$) {Acquisition};
-\node[ph] at ($(s3.north west)!0.5!(s5.south west)+(-5.6mm,0)$) {Processing};
-\node[ph] at ($(s6.north west)!0.5!(s7.south west)+(-5.6mm,0)$) {Delivery};
-% timeline (right)
-\draw[black!55, line width=0.7pt]
-  ($(s1.north east)+(3.2mm,0)$) -- ($(res.south east)+(3.2mm,0)$);
-\foreach \n/\t in {s1/{t $=$ 0\,s}, s2/{$\approx$1\,s}, res/{5.9\,s median}}{
-  \fill[black!60] ($(\n.east)+(3.2mm,0)$) circle (0.55mm);
-  \node[font=\tiny, anchor=west, text=black!60] at ($(\n.east)+(4.4mm,0)$) {\t};}
+  \draw[sarr] (\a.south) -- (\b.north);}
+% ---- phase bars (left, uniform) ----
+\foreach \ya/\yb/\nm in {0/-20.0/Acquisition, -22.4/-53.6/Processing, -56.0/-76.0/Delivery}{
+  \draw[acc!55, line width=1mm, line cap=round] (-32.6,\ya-0.6) -- (-32.6,\yb-0.6);}
+\node[phl] at (-35.6,-10.6) {Acquisition};
+\node[phl] at (-35.6,-38.3) {Processing};
+\node[phl] at (-35.6,-66.3) {Delivery};
+% ---- timeline (right) ----
+\draw[black!35, line width=0.6pt, -{Latex[length=1.6mm,width=1.4mm]}]
+  (32.6,-1.2) -- (32.6,-88.0);
+\foreach \y/\t in {-4.4/{t $=$ 0\,s}, -15.6/{$\approx$1\,s}, -82.8/{5.9\,s (median)}}{
+  \fill[acc!80] (32.6,\y) circle (0.6mm);
+  \node[font=\tiny, anchor=west, text=black!60] at (33.8,\y) {\t};}
 \end{tikzpicture}}%
 \caption{Real-time data flow: the life of one position report, from the
 GPS fix on the bus to the passenger's screen, grouped into acquisition,
