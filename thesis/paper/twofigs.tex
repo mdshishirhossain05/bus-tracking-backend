@@ -7,6 +7,10 @@
   barr/.style={-{Latex[length=1.8mm,width=1.5mm]}, semithick, draw=black!80, densely dashed},
   blk/.style={draw=black!65, rounded corners=1.4pt, align=center, inner sep=2.6pt, fill=white},
   lab/.style={font=\tiny, align=center, inner sep=1.2pt, fill=white},
+  bbarr/.style={{Latex[length=1.8mm,width=1.5mm]}-{Latex[length=1.8mm,width=1.5mm]},
+    semithick, draw=black!80, densely dashed},
+  darr/.style={{Latex[length=1.6mm,width=1.4mm]}-{Latex[length=1.6mm,width=1.4mm]},
+    semithick, draw=black!80},
   zone/.style={draw=black!50, densely dashed, rounded corners=3pt},
   zlab/.style={font=\tiny\bfseries\scshape, text=black!60, fill=white, inner sep=1.5pt}
 }
@@ -65,20 +69,22 @@
   node[lab, pos=0.45, anchor=west, xshift=0.8mm] {REST / HTTPS\\(fallback)};
 \draw[arr] ($(trac.east)+(0,3.2mm)$) -- ($(app.west)+(0,3.2mm)$)
   node[lab, midway, anchor=south, yshift=0.3mm] {WebSocket\\($\approx$1\,s)};
-\draw[barr] ($(trac.east)+(0,-3.6mm)$) -- ($(app.west)+(0,-3.6mm)$)
+\draw[bbarr] ($(trac.east)+(0,-3.6mm)$) -- ($(app.west)+(0,-3.6mm)$)
   node[lab, midway, anchor=north, yshift=-0.3mm] {REST poll\\(backup)};
-\draw[arr, rounded corners=1.5pt] ($(app.south)+(-16mm,0)$) -- ++(0,-1.9mm) -| (pg.north);
-\draw[arr] (app.south -| rd) -- (rd.north);
-\coordinate (pX) at ($(pass.north)+(0,0)$);
+\draw[darr, rounded corners=1.5pt] ($(app.south)+(-16mm,0)$) -- ++(0,-1.9mm) -| (pg.north);
+\draw[darr] (app.south -| rd) -- (rd.north);
+\coordinate (pX) at ($(pass.north)+(-4.5mm,0)$);
+\coordinate (pR) at ($(pass.north)+(6mm,0)$);
 \coordinate (aX) at ($(adm.north)+(0,0)$);
 \draw[arr] (pX |- bzone.south) -- (pX)
   node[lab, midway, anchor=east, xshift=-0.8mm] {live location \& ETAs\\(WebSocket push)};
-\draw[barr] (aX |- bzone.south) -- (aX)
-  node[lab, midway, anchor=west, xshift=0.8mm] {REST API\\management};
+\draw[bbarr] (pR |- bzone.south) -- (pR);
+\draw[bbarr] (aX |- bzone.south) -- (aX)
+  node[lab, midway, anchor=west, xshift=0.8mm] {REST API:\\manage \& query};
 % legend
 \node[anchor=north, font=\tiny] at ($(czone.south)+(0,-1.8mm)$)
   {\tikz{\draw[arr] (0,0) -- (4.5mm,0);}\, real-time location data\qquad
-   \tikz{\draw[barr] (0,0) -- (4.5mm,0);}\, request / response (REST)};
+   \tikz{\draw[bbarr] (0,0) -- (4.5mm,0);}\, request $\leftrightarrow$ response (REST)};
 \end{tikzpicture}
 % ================== FIG 2: REAL-TIME DATA FLOW ==================
 \begin{tikzpicture}[font=\scriptsize,
