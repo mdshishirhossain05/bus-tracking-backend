@@ -40,15 +40,15 @@
   .member .id { font-size:12.5pt; font-weight:500; color:#5a6b85; margin-top:2px; }
   /* ---------------- columns ---------------- */
   .cols { display:flex; gap:0.38in; margin-top:0.34in; flex:1; }
-  .col  { flex:1; display:flex; flex-direction:column; gap:0.3in; }
+  .col  { flex:1; display:flex; flex-direction:column; gap:0.24in; }
   .card {
     background:#ffffff; border:2px solid #d5e0ef; border-radius:16px;
-    padding:0.24in 0.3in; box-shadow:0 3px 10px rgba(31,58,110,0.07);
+    padding:0.2in 0.28in; box-shadow:0 3px 10px rgba(31,58,110,0.07);
   }
   .card h2 {
-    font-size:24pt; font-weight:800; color:#1f3a6e;
+    font-size:22pt; font-weight:800; color:#1f3a6e;
     display:flex; align-items:center; gap:0.16in;
-    padding-bottom:0.1in; border-bottom:3.5px solid #2563eb; margin-bottom:0.16in;
+    padding-bottom:0.08in; border-bottom:3.5px solid #2563eb; margin-bottom:0.13in;
   }
   .ico {
     width:0.42in; height:0.42in; border-radius:9px; background:#e3ecfb;
@@ -56,15 +56,17 @@
   }
   .ico svg { width:0.26in; height:0.26in; stroke:#1f3a6e; fill:none;
              stroke-width:2.2; stroke-linecap:round; stroke-linejoin:round; }
-  p, li { font-size:17pt; line-height:1.42; color:#2c3b55; }
+  p, li { font-size:16pt; line-height:1.38; color:#2c3b55; }
   ul { list-style:none; }
-  ul li { display:flex; gap:0.14in; margin-bottom:0.09in; }
+  ul li { display:flex; gap:0.14in; margin-bottom:0.06in; }
   ul li::before { content:""; flex:none; width:0.13in; height:0.13in; border-radius:50%;
                   background:#2563eb; margin-top:0.115in; }
   b { color:#17263d; }
   .imgwrap { text-align:center; }
   .imgwrap img { max-width:100%; }
-  .cap { font-size:12.5pt; color:#5a6b85; text-align:center; margin-top:0.06in; }
+  .cap { font-size:12pt; color:#5a6b85; text-align:center; margin-top:0.06in; }
+  .ticks li::before { content:"✓"; background:none; width:auto; height:auto;
+                  color:#15803d; font-weight:900; font-size:18pt; margin-top:0; line-height:1.3; }
   /* problem box */
   .problem { background:#fff3e6; border:2.5px solid #e8a35c; border-radius:12px;
              padding:0.16in 0.22in; }
@@ -81,12 +83,20 @@
   /* stats */
   .stats { display:grid; grid-template-columns:1fr 1fr 1fr; gap:0.16in; }
   .stat { background:#f2f7fd; border:2px solid #d5e0ef; border-radius:12px;
-          padding:0.12in 0.1in; text-align:center; }
-  .stat .v { font-size:27pt; font-weight:900; color:#1f3a6e; }
+          padding:0.09in 0.08in; text-align:center; }
+  .stat .v { font-size:23pt; font-weight:900; color:#1f3a6e; }
   .stat .g { color:#15803d; }
   .stat .l { font-size:12.5pt; font-weight:600; color:#5a6b85; margin-top:2px; line-height:1.25; }
-  .pilotline { margin-top:0.14in; text-align:center; font-size:14.5pt; font-weight:600; color:#2c3b55;
+  .pilotline { margin-top:0.12in; text-align:center; font-size:13.5pt; font-weight:600; color:#2c3b55;
                background:#eef7ef; border:2px solid #bfdec6; border-radius:10px; padding:0.09in; }
+  .fixrow { display:flex; align-items:stretch; gap:0.14in; }
+  .fixbad, .fixgood { flex:1; border-radius:12px; padding:0.14in 0.18in; text-align:center; }
+  .fixbad  { background:#fff3e6; border:2.5px solid #e8a35c; }
+  .fixgood { background:#eaf6ec; border:2.5px solid #64ad74; }
+  .fixv { font-size:29pt; font-weight:900; }
+  .fixbad .fixv { color:#c2410c; } .fixgood .fixv { color:#15803d; }
+  .fixt { font-size:12.5pt; font-weight:600; color:#4a5a74; line-height:1.3; margin-top:2px; }
+  .fixarrow { align-self:center; font-size:30pt; font-weight:900; color:#1f3a6e; }
   /* thanks */
   .thanks { background:#1f3a6e; border:none; }
   .thanks p { color:#e8eefb; font-size:16pt; text-align:center; }
@@ -96,7 +106,7 @@
 
   <!-- ================= HEADER ================= -->
   <div class="header">
-    <div class="badge left"><div class="mono">NPI</div><div class="sub">UNIVERSITY</div></div>
+    <div class="badge left" style="border:none;background:transparent;"><img src="npiub_logo.png" style="width:100%;height:100%;object-fit:contain;"></div>
     <div class="badge right">
       <svg width="58" height="58" viewBox="0 0 24 24" fill="none" stroke="#1f3a6e" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
         <path d="M8 6v6"/><path d="M15 6v6"/><path d="M2 12h19.6"/>
@@ -106,15 +116,15 @@
       <div class="sub">UNIBUS LIVE</div>
     </div>
     <div class="event1">PROJECT FAIR 2026</div>
-    <div class="event2">Organised by the Department of Computer Science &amp; Engineering<br>
-      NPI University of Bangladesh, Manikganj &nbsp;·&nbsp; Venue: —— &nbsp;·&nbsp; Date: ——</div>
+    <div class="event2">Ground Floor, Main Building &nbsp;·&nbsp; NPI University of Bangladesh (NPIUB)<br>
+      Date: 10th July, 2026 &nbsp;·&nbsp; Time: 10&nbsp;AM – 4&nbsp;PM</div>
     <div class="title">UNIBUS LIVE</div>
     <div class="subtitle">Real-Time University Bus Tracking — Live Map, Arrival Times &amp; Alerts, in English &amp; Bangla</div>
     <div><span class="teambox">TEAM UNIBUS</span></div>
     <div class="members">
-      <div class="member"><div class="nm">Md. Shishir Hossain</div><div class="id">ID: ———— &nbsp;·&nbsp; Batch: ——</div></div>
-      <div class="member"><div class="nm">Md. Sajib Hassan</div><div class="id">ID: ———— &nbsp;·&nbsp; Batch: ——</div></div>
-      <div class="member"><div class="nm">Md. Showkat Hossen</div><div class="id">ID: ———— &nbsp;·&nbsp; Batch: ——</div></div>
+      <div class="member"><div class="nm">Md. Shishir Hossain</div><div class="id">ID: 1005 &nbsp;·&nbsp; Batch: 12th</div></div>
+      <div class="member"><div class="nm">Md. Sajib Hassan</div><div class="id">ID: 1008 &nbsp;·&nbsp; Batch: 12th</div></div>
+      <div class="member"><div class="nm">Md. Showkat Hossen</div><div class="id">ID: 1009 &nbsp;·&nbsp; Batch: 12th</div></div>
     </div>
   </div>
 
@@ -125,29 +135,39 @@
     <div class="col">
       <div class="card">
         <h2><span class="ico"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 8v.01M12 11v5"/></svg></span>INTRODUCTION</h2>
-        <p>UniBus Live shows every university bus <b>live on a map</b>, with the
-        <b>arrival time for each stop</b>. A GPS tracker fixed inside the bus reports its
-        position every 5 seconds; our server cleans the data, calculates arrival times,
-        and pushes updates to every student's phone <b>within seconds</b>.</p>
+        <p>UniBus Live shows every university bus <b>live on a map</b> with the
+        <b>arrival time for each stop</b>. A GPS tracker fixed in the bus reports every
+        5 seconds; our server cleans the data and pushes position + ETAs to every
+        student's phone <b>within seconds</b>.</p>
       </div>
 
       <div class="card">
         <h2><span class="ico"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="4.5"/><circle cx="12" cy="12" r="0.8"/></svg></span>OBJECTIVES</h2>
         <ul>
-          <li>Let riders see the bus and their stop's arrival time before leaving home</li>
-          <li>Track without depending on the driver — the fixed tracker works by itself</li>
-          <li>Keep the whole system affordable on a single low-cost cloud server</li>
-          <li>Serve every student in both <b>English and Bangla</b></li>
+          <li><span>See the bus &amp; your stop's arrival time <b>before leaving home</b></span></li>
+          <li><span><b>No driver dependence</b> — the fixed tracker works by itself</span></li>
+          <li><span>Affordable (one low-cost server) &amp; bilingual: <b>English + Bangla</b></span></li>
         </ul>
       </div>
 
       <div class="card">
         <h2><span class="ico"><svg viewBox="0 0 24 24"><path d="M12 3 2 20h20L12 3z"/><path d="M12 10v4M12 17v.01"/></svg></span>PROBLEM STATEMENT</h2>
         <div class="problem">
-          <p>Students wait at stops with no idea whether the bus left five minutes ago
-          or is fifteen minutes away — causing missed buses, long waits and crowding.
-          Commercial trackers are costly, operator-facing and English-only.</p>
+          <p>Students wait at stops with no idea whether the bus left five minutes
+          ago or is fifteen minutes away — missed buses, long waits, crowding.
+          Commercial trackers are costly and English-only.</p>
         </div>
+      </div>
+
+      <div class="card">
+        <h2><span class="ico"><svg viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"/></svg></span>WHAT WE BUILT &amp; SOLVED</h2>
+        <ul class="ticks">
+          <li><span>Live map + <b>arrival time for every stop</b>, updated in seconds</span></li>
+          <li><span><b>Map never blank</b> — bus visible at the depot before departure</span></li>
+          <li><span>Noisy GPS cleaned — impossible jumps &amp; jitter <b>filtered out</b></span></li>
+          <li><span>Tracker fails? The phone <b>takes over automatically</b></span></li>
+          <li><span><b>Get-off alert</b> when the bus is within 80 m of your stop</span></li>
+        </ul>
       </div>
 
       <div class="card">
@@ -170,8 +190,7 @@
 
       <div class="card" style="flex:1">
         <h2><span class="ico"><svg viewBox="0 0 24 24"><rect x="2" y="3" width="9" height="7" rx="1.5"/><rect x="13" y="14" width="9" height="7" rx="1.5"/><path d="M6.5 10v4a2 2 0 0 0 2 2H13M17.5 14V10a2 2 0 0 0-2-2H11"/></svg></span>SYSTEM ARCHITECTURE &amp; SETUP</h2>
-        <div class="imgwrap"><img src="arch600.png" style="width:92%"></div>
-        <div class="cap">Three layers: the bus, one cloud server, and the users — the tracker needs no driver action at all.</div>
+        <div class="imgwrap"><img src="arch600.png" style="width:72%"></div>
       </div>
     </div>
 
@@ -179,7 +198,7 @@
     <div class="col">
       <div class="card">
         <h2><span class="ico"><svg viewBox="0 0 24 24"><path d="M4 4h6v6H4zM14 14h6v6h-6z"/><path d="M7 10v4a2 2 0 0 0 2 2h5M17 14V9a2 2 0 0 0-2-2h-5"/></svg></span>METHODOLOGY</h2>
-        <div class="imgwrap"><img src="flow600.png" style="width:84%"></div>
+        <div class="imgwrap"><img src="flow600.png" style="width:65%"></div>
         <div class="cap">The journey of one position report — from the GPS fix on the bus to the rider's screen.</div>
       </div>
 
@@ -191,11 +210,22 @@
           <div class="stat"><div class="v">71</div><div class="l">real trips tracked<br>across 9 routes</div></div>
           <div class="stat"><div class="v">64 / 36</div><div class="l">% trips by tracker<br>vs phone backup</div></div>
           <div class="stat"><div class="v g">80%</div><div class="l">arrival alerts<br>read by riders</div></div>
-          <div class="stat"><div class="v g">60×</div><div class="l">less idle reporting<br>after our fix</div></div>
+          <div class="stat"><div class="v g">80 m</div><div class="l">get-off alert radius<br>at your stop</div></div>
         </div>
         <div class="pilotline">Proven in a 7-week pilot on the real university fleet — 3 buses · 9 routes · 38 riders · zero simulation</div>
-        <div class="imgwrap" style="margin-top:0.16in"><img src="screens.png" style="width:100%; border-radius:10px;"></div>
+        <div class="imgwrap" style="margin-top:0.14in"><img src="screens.png" style="width:71%; border-radius:10px;"></div>
         <div class="cap">The bilingual passenger app: live tracking with ETA · on-route status · today's schedules · English/Bangla toggle</div>
+      </div>
+
+      <div class="card">
+        <h2><span class="ico"><svg viewBox="0 0 24 24"><path d="M13 2 4.5 13.5H11L9.5 22 19 9.5h-6.5L13 2z"/></svg></span>A HIDDEN PROBLEM — FOUND &amp; FIXED</h2>
+        <div class="fixrow">
+          <div class="fixbad"><div class="fixv">98%</div>
+            <div class="fixt">of 46,548 GPS reports were pure <b>waste</b> — buses kept transmitting every 5 s even while parked overnight</div></div>
+          <div class="fixarrow">→</div>
+          <div class="fixgood"><div class="fixv">60×</div>
+            <div class="fixt">less parked-time reporting after our fix — tracker <b>5 s → 300 s</b> when parked, server polling <b>8 s → 60 s</b> when idle</div></div>
+        </div>
       </div>
 
       <div class="card">
