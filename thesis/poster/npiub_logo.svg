@@ -1,0 +1,124 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 960" font-family="Inter, sans-serif">
+  <!-- ================= NPIUB crest (vector re-creation) ================= -->
+
+  <!-- blue side ribbons (behind shield bottom) -->
+  <g fill="#3540A3">
+    <!-- left band -->
+    <path d="M 60 585
+             C 90 720, 200 840, 425 885
+             L 445 810
+             C 255 770, 165 675, 140 560
+             Z"/>
+    <!-- left fork -->
+    <path d="M 60 585 L 145 562 L 118 505 L 40 520 Z"/>
+    <!-- right band -->
+    <path d="M 940 585
+             C 910 720, 800 840, 575 885
+             L 555 810
+             C 745 770, 835 675, 860 560
+             Z"/>
+    <!-- right fork -->
+    <path d="M 940 585 L 855 562 L 882 505 L 960 520 Z"/>
+    <!-- bottom band -->
+    <path d="M 360 866 Q 500 896 640 866 L 640 948 Q 500 976 360 948 Z"/>
+    <!-- folds where bottom meets sides -->
+    <path d="M 360 866 L 425 885 L 360 948 Z" fill="#232C7A"/>
+    <path d="M 640 866 L 575 885 L 640 948 Z" fill="#232C7A"/>
+  </g>
+  <!-- ribbon texts on paths -->
+  <defs>
+    <path id="lb" d="M 92 588 C 122 700, 222 806, 430 852"/>
+    <path id="rb" d="M 566 848 C 770 800, 872 690, 906 580"/>
+    <path id="bb" d="M 380 912 Q 500 938 622 908"/>
+  </defs>
+  <text font-size="64" font-weight="700" fill="#ffffff" letter-spacing="1">
+    <textPath href="#lb" startOffset="50%" text-anchor="middle">NPI University</textPath>
+  </text>
+  <text font-size="64" font-weight="700" fill="#ffffff" letter-spacing="1">
+    <textPath href="#rb" startOffset="50%" text-anchor="middle">Bangladesh</textPath>
+  </text>
+  <text font-size="58" font-weight="700" fill="#ffffff">
+    <textPath href="#bb" startOffset="50%" text-anchor="middle">of</textPath>
+  </text>
+
+  <!-- shield (academic heater with shallow top-centre notch) -->
+  <path d="M 262 110
+           Q 250 110 250 122
+           L 250 402
+           Q 250 656 500 806
+           Q 750 656 750 402
+           L 750 122
+           Q 750 110 738 110
+           L 540 110
+           L 500 146
+           L 460 110
+           Z"
+        fill="#ffffff" stroke="#00813C" stroke-width="40"/>
+
+  <!-- inner detail: open book with flame -->
+  <g stroke="#111111" stroke-width="7" stroke-linejoin="round">
+    <!-- flame -->
+    <path d="M 500 305 C 522 340, 527 362, 507 388 C 497 401, 494 412, 500 424
+             C 478 410, 470 388, 483 366 C 494 348, 498 330, 500 305 Z"
+          fill="#D92B1F" stroke="none"/>
+    <!-- page block sides -->
+    <path d="M 330 470 L 330 492 Q 415 520 500 500 Q 585 520 670 492 L 670 470"
+          fill="#c9c9c9"/>
+    <!-- left page -->
+    <path d="M 500 432 Q 420 402 330 430 L 330 470 Q 420 442 500 472 Z" fill="#e9e9e9"/>
+    <path d="M 336 466 Q 420 438 496 466 L 496 340 Q 430 316 352 336 Q 340 400 336 466 Z" fill="#f5f5f5"/>
+    <!-- right page -->
+    <path d="M 664 466 Q 580 438 504 466 L 504 340 Q 570 316 648 336 Q 660 400 664 466 Z" fill="#f5f5f5"/>
+    <!-- page curl left -->
+    <path d="M 336 466 Q 390 452 430 458 Q 400 480 348 486 Z" fill="#dcdcdc"/>
+    <!-- centre spine -->
+    <path d="M 500 340 L 500 470" fill="none"/>
+  </g>
+
+  <!-- quadrant divider -->
+  <g stroke="#111111" stroke-width="11">
+    <line x1="272" y1="540" x2="728" y2="540"/>
+    <line x1="500" y1="540" x2="500" y2="780"/>
+  </g>
+
+  <!-- atom (lower-left) -->
+  <g stroke="#111111" stroke-width="13" fill="none">
+    <ellipse cx="385" cy="655" rx="92" ry="34"/>
+    <ellipse cx="385" cy="655" rx="92" ry="34" transform="rotate(60 385 655)"/>
+    <ellipse cx="385" cy="655" rx="92" ry="34" transform="rotate(-60 385 655)"/>
+  </g>
+  <circle cx="385" cy="655" r="13" fill="#111111"/>
+
+  <!-- graduation cap + diploma (lower-right) -->
+  <g>
+    <!-- diploma -->
+    <g transform="rotate(-24 655 705)">
+      <rect x="585" y="685" width="140" height="42" rx="20" fill="#F0E2C4" stroke="#111111" stroke-width="5"/>
+      <rect x="638" y="682" width="26" height="48" fill="#D92B1F"/>
+      <ellipse cx="722" cy="706" rx="12" ry="20" fill="#fff8ea" stroke="#111111" stroke-width="4"/>
+    </g>
+    <!-- cap skull -->
+    <path d="M 560 640 Q 615 668 670 640 L 670 610 L 560 610 Z" fill="#141414"/>
+    <!-- mortarboard -->
+    <polygon points="615,570 726,608 615,646 504,608" fill="#1b1b1b"/>
+    <polygon points="615,578 706,608 615,638 524,608" fill="#2e2e2e"/>
+    <!-- tassel -->
+    <path d="M 615 608 L 615 588" stroke="#666" stroke-width="4"/>
+    <path d="M 508 610 Q 500 660 512 686" stroke="#8a6d1f" stroke-width="6" fill="none"/>
+    <circle cx="513" cy="694" r="11" fill="#8a6d1f"/>
+  </g>
+
+  <!-- red banner (on top) -->
+  <g>
+    <!-- side wings -->
+    <path d="M 250 205 L 68 262 L 118 342 L 68 424 L 250 372 Z" fill="#DA3327"/>
+    <path d="M 750 205 L 932 262 L 882 342 L 932 424 L 750 372 Z" fill="#DA3327"/>
+    <!-- folds -->
+    <path d="M 250 372 L 250 415 L 305 372 Z" fill="#9E1F14"/>
+    <path d="M 750 372 L 750 415 L 695 372 Z" fill="#9E1F14"/>
+    <!-- centre panel -->
+    <path d="M 236 168 Q 500 148 764 168 L 764 356 Q 500 376 236 356 Z" fill="#E13A2C"/>
+    <text x="500" y="296" text-anchor="middle" font-size="150" font-weight="900"
+          fill="#ffffff" letter-spacing="6">NPIUB</text>
+  </g>
+</svg>
