@@ -153,10 +153,29 @@ with Next.js. It integrates the Google Maps JavaScript API for two
 map-centric tools: the \emph{live operations map}, which shows every
 active vehicle in the fleet at once (FR-12), and the \emph{route
 builder}, with which an administrator lays out a route's polyline and
-stop sequence directly on the map. Beyond the maps, the console manages
+stop sequence directly on the map. Figure~\ref{fig:admin} shows four of
+its principal screens; Appendix~\ref{app:adminscreens} reproduces the
+remaining management pages. Beyond the maps, the console manages
 buses, GPS devices, schedules, and user roles through the same REST API
 the mobile app uses (FR-11)---one API surface, two clients, no
 duplicated logic.
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.49\textwidth]{admin/live_ops.jpg}\hfill
+\includegraphics[width=0.49\textwidth]{admin/route_builder.jpg}\\[2mm]
+\includegraphics[width=0.49\textwidth]{admin/devices.jpg}\hfill
+\includegraphics[width=0.49\textwidth]{admin/analytics.jpg}
+\caption[Principal screens of the administration console]{Principal
+screens of the administration console. Top left: the live operations
+dashboard with the fleet overview and today's schedules. Top right: the
+route-builder view, assigning the ordered stop sequence of a route with
+its along-path distance, estimated travel time, and map visualization.
+Bottom left: the fixed GPS device registry with telematics-integration
+status and per-device diagnostics. Bottom right: the analytics view
+aggregating trip volume, route activity, and arrival performance.}
+\label{fig:admin}
+\end{figure}
 
 \section{On-Vehicle Device Configuration}
 \label{sec:impl-device}

@@ -210,24 +210,29 @@ Figure~\ref{fig:lifecycle}:
 \begin{figure}[H]
 \centering
 \resizebox{\textwidth}{!}{%
-\begin{tikzpicture}[font=\small, node distance=1.75cm,
-  st/.style={draw, rounded corners=3pt, fill=blue!6, minimum width=2.5cm,
+\begin{tikzpicture}[font=\small,
+  st/.style={draw, rounded corners=3pt, fill=blue!6, minimum width=2.6cm,
              minimum height=9mm, align=center},
+  lb/.style={font=\footnotesize, align=center},
+  nt/.style={font=\footnotesize, text=black!60, align=center,
+             text width=3.7cm},
   ar/.style={-{Latex[length=2.4mm,width=2mm]}, semithick}]
-\node[st] (pl) {\textsc{planned}};
-\node[st, right=of pl] (pt) {\textsc{pre\_trip}};
-\node[st, right=of pt] (ru) {\textsc{running}};
-\node[st, right=of ru] (en) {\textsc{ended}};
-\draw[ar] (pl) -- (pt) node[midway, above, font=\footnotesize, align=center]
-  {scheduled job\\opens window};
-\draw[ar] (pt) -- (ru) node[midway, above, font=\footnotesize, align=center]
-  {dwell inside\\origin geofence};
-\draw[ar] (ru) -- (en) node[midway, above, font=\footnotesize, align=center]
-  {trip completed\\or closed};
-\node[below=4.5mm of pt, font=\footnotesize, text=black!60, align=center]
-  {rider sees pre-departure state:\\parked / approaching / arrived at origin};
-\node[below=4.5mm of ru, font=\footnotesize, text=black!60, align=center]
-  {live tracking, ETAs,\\staleness monitoring};
+\node[st] (pl) at (0,0)     {\textsc{planned}};
+\node[st] (pt) at (4.55,0)  {\textsc{pre\_trip}};
+\node[st] (ru) at (9.10,0)  {\textsc{running}};
+\node[st] (en) at (13.65,0) {\textsc{ended}};
+\draw[ar] (pl) -- (pt);
+\draw[ar] (pt) -- (ru);
+\draw[ar] (ru) -- (en);
+% transition labels: raised fully above the boxes, no overlap
+\node[lb] at (2.275,1.05)  {scheduled job\\opens window};
+\node[lb] at (6.825,1.05)  {dwell inside\\origin geofence};
+\node[lb] at (11.375,1.05) {trip completed\\or closed};
+% state notes: fixed width, one per box, cannot collide
+\node[nt, anchor=north] at (4.55,-0.75)
+  {rider sees pre-departure state: parked / approaching / arrived at origin};
+\node[nt, anchor=north] at (9.10,-0.75)
+  {live tracking, ETAs, staleness monitoring};
 \end{tikzpicture}}%
 \caption{The trip lifecycle state machine. The \textsc{pre\_trip} state is
 what keeps the passenger's map informative before departure.}
