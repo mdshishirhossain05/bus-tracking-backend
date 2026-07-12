@@ -1,0 +1,121 @@
+% =====================================================================
+% APPENDICES
+% =====================================================================
+
+\chapter{Tracker SMS Configuration Commands}
+\label{app:sms}
+The Concox GT06S tracker is configured entirely over SMS; each command
+is acknowledged by a return SMS from the device. Table~\ref{tab:sms}
+lists the commands used during deployment and the pilot.
+
+\begin{table}[H]
+\caption{GT06S SMS commands used in this work.}
+\label{tab:sms}
+\centering
+\small
+\begin{tabular}{@{}lp{9.6cm}@{}}
+\toprule
+\textbf{Command} & \textbf{Effect} \\
+\midrule
+\texttt{TIMER,5,300\#} & Set asymmetric reporting: every 5\,s while the
+vehicle is moving, every 300\,s while static. This is the device-side
+half of the idle-efficiency optimization
+(Section~\ref{sec:eval-efficiency}). \\
+\texttt{PARAM\#} & Read back the active configuration, used to verify
+that the \texttt{TIMER} change was applied. \\
+\texttt{STATUS\#} & Report battery level and GSM/GPS state, used for
+routine health checks during the pilot. \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+The device also emits a low-frequency heartbeat between position
+reports, which keeps it visible as \emph{online} to the telematics
+server while parked.
+
+\chapter{Operator-Configurable Processing Parameters}
+\label{app:params}
+Table~\ref{tab:params} consolidates the tunable parameters of the
+position-processing pipeline with the values used in the pilot. All are
+operator-configurable without code changes.
+
+\begin{table}[H]
+\caption{Pipeline parameters and pilot values.}
+\label{tab:params}
+\centering
+\small
+\begin{tabular}{@{}lll@{}}
+\toprule
+\textbf{Parameter} & \textbf{Pilot value} & \textbf{Role} \\
+\midrule
+Accuracy soft-reject      & 120\,m      & Quality gate
+(Section~\ref{sec:design-filter}) \\
+Accuracy hard-reject      & 250\,m      & Quality gate \\
+Teleport guard            & 120\,km/h   & Physical plausibility \\
+Minimum movement          & 4\,m        & Stationary-jitter floor \\
+Reliable-speed threshold  & 5\,km/h     & ETA effective speed
+(Section~\ref{sec:design-eta}) \\
+Default speed             & 20\,km/h    & ETA fallback speed \\
+Arrival radius            & 80\,m       & Stop-reached detection, alerts \\
+Staleness check period    & 30\,s       & Trip staleness job \\
+Active-trip poll interval & 8\,s        & Traccar reconciliation \\
+Idle poll interval        & 60\,s       & Trip-aware throttling \\
+Moving report interval    & 5\,s        & Device cadence (GT06S) \\
+Parked report interval    & 300\,s      & Device cadence (GT06S) \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\chapter{API Surface: Functional Overview}
+\label{app:api}
+The application server exposes one REST API consumed by both clients,
+plus the Socket.IO realtime gateway. Table~\ref{tab:api} summarizes the
+API at the level of functional resource areas, indicating which client
+consumes each area. (Exact endpoint paths are an implementation detail
+and are omitted here; the table records the functional surface.)
+
+\begin{table}[H]
+\caption{Functional overview of the API surface.}
+\label{tab:api}
+\centering
+\small
+\begin{tabular}{@{}lp{6.6cm}l@{}}
+\toprule
+\textbf{Resource area} & \textbf{Operations} & \textbf{Consumer} \\
+\midrule
+Authentication & Registration, login, session management, OTP
+verification & Both clients \\
+Routes \& stops & Query route geometry, stop lists; create and edit
+routes (route builder) & Both / Admin \\
+Schedules & Query today's and upcoming schedules; manage timetable
+entries & Both / Admin \\
+Trips \& live state & Query active trip, live tracking state, and
+per-stop ETAs & Passenger \\
+Driver location & Publish authenticated fallback position reports &
+Driver mode \\
+Favourites \& alerts & Manage favourite stops and drop-off alert
+subscriptions & Passenger \\
+Notifications & Deliver and mark-read arrival/service notifications &
+Passenger \\
+Fleet \& devices & Manage buses, GPS devices, and driver assignments &
+Admin \\
+Users \& roles & Manage accounts and role-based permissions & Admin \\
+Realtime (Socket.IO) & Join per-trip rooms; receive position and ETA
+push events & Passenger / Admin \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\chapter{Passenger Application Screens}
+\label{app:screens}
+Figure~\ref{fig:screens-app} reproduces the representative passenger
+screens at full width: (a) live tracking of a moving bus with the
+next-stop ETA; (b) on-route status with the next stop and current speed;
+(c) today's schedules; (d) the in-app English/Bangla language toggle.
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=\textwidth]{screens.png}
+\caption{The bilingual passenger application at full page width.}
+\label{fig:screens-app}
+\end{figure}

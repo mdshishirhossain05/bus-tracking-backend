@@ -1,0 +1,176 @@
+% =====================================================================
+\chapter{Literature Review}
+\label{ch:literature}
+
+\section{Overview}
+Real-time bus tracking sits at the intersection of several research
+areas: vehicle telematics, mobile and participatory sensing, arrival-time
+prediction, and GPS signal processing. This chapter reviews the work most
+relevant to a low-cost, passenger-facing university deployment, grouped
+into five strands: campus bus tracking systems
+(Section~\ref{sec:lit-campus}), smartphone-based and crowdsourced
+positioning (Section~\ref{sec:lit-phone}), bus arrival-time prediction
+(Section~\ref{sec:lit-eta}), GPS quality and map matching
+(Section~\ref{sec:lit-gps}), and open telematics platforms
+(Section~\ref{sec:lit-telematics}). Section~\ref{sec:lit-gap} then
+summarizes the gap that \system{} addresses.
+
+\section{Campus and Real-Time Bus Tracking Systems}
+\label{sec:lit-campus}
+Student-facing bus tracking has attracted steady attention because the
+need is so tangible. Sharif \emph{et al.}~[1] describe a real-time campus
+bus tracking mobile application in which an on-board GPS tracker is paired
+with an IoT passenger counter, so that riders see both the location of
+the bus and an indication of how full it is. Premkumar \emph{et al.}~[2]
+present a college bus tracking and notification system that combines GPS
+tracking with a schedule view and push notifications, so that students are
+actively told about the bus rather than having to watch a map
+continuously.
+
+These systems demonstrate the practical value of live tracking on a
+campus fleet, and several of their ideas---push notifications, schedule
+integration---also appear in \system{}. However, they share two
+characteristics that limit their applicability to deployments like ours.
+First, each depends on a \emph{single} on-board positioning source; if
+that device fails, is powered off, or is not yet installed on a
+particular vehicle, tracking for that bus simply stops. Second, their
+interfaces are English-only, which is a real adoption barrier for a
+student population that is more comfortable in Bangla. \system{} differs
+on precisely these two axes: it ingests two independent position sources
+with automatic arbitration between them, and its entire passenger
+experience is bilingual.
+
+\section{Smartphone-Based and Crowdsourced Positioning}
+\label{sec:lit-phone}
+A complementary research line removes dedicated hardware entirely and
+uses smartphones as the position source. The seminal work of Zhou
+\emph{et al.}~[3] showed that bus arrival times can be predicted from
+passengers' phones alone: participatory sensing infers which passengers
+are on a bus and where that bus is, without any cooperation from the
+transit operator. Wepulanon \emph{et al.}~[4] develop this idea into a
+real-time arrival information framework driven entirely by crowdsourced
+smartphone observations, evaluated through simulation experiments.
+
+The appeal of these approaches is obvious---zero hardware cost---but they
+carry a structural weakness for a small university fleet: coverage depends
+on enough contributing phones being on the bus at the right time. A
+route's first trip of the morning, a lightly loaded off-peak trip, or a
+trip whose riders decline to share location data all produce gaps
+precisely when a waiting passenger most needs information.
+
+\system{} deliberately \emph{inverts} the relationship between phones and
+hardware. Normal operation depends on no phone at all: the primary source
+is an autonomous, vehicle-fixed GPS tracker. A phone---the driver's, not
+the passengers'---participates only as an optional fallback that is
+selected automatically when no healthy hardware fix is available. Phone
+sensing thus supplements the system instead of carrying it.
+
+\section{Bus Arrival-Time Prediction}
+\label{sec:lit-eta}
+Predicting when a bus will arrive is a well-studied problem with a
+spectrum of approaches. Reich \emph{et al.}~[5] survey ETA prediction
+methods for public transport and organize them by the input data they
+require, while Singh and Kumar~[6] review artificial-intelligence
+approaches specifically for bus arrival-time prediction.
+
+On the data-driven end of the spectrum, Ye and Thiengburanathum~[7]
+demonstrate support-vector regression running on a Spark big-data
+framework for city buses in Chiang Mai; Rashvand \emph{et al.}~[8],~[9]
+train fully connected neural networks that predict arrival and departure
+times across hundreds of routes; Jeong \emph{et al.}~[10] apply a
+transformer encoder to capture long-range temporal dependence in bus
+trajectories; and Google's BusTr system, described by Barnes
+\emph{et al.}~[11], translates real-time traffic forecasts into bus delay
+predictions at a global scale. These models achieve strong accuracy, but
+they share a prerequisite that a brand-new single-campus deployment cannot
+meet: large historical trajectory datasets, and in some cases external
+traffic feeds, must exist before the model can be trained at all.
+
+\system{} therefore takes the pragmatic position appropriate to a cold
+start: a lightweight \emph{geometric} estimator (remaining along-route
+distance divided by a rolling-average speed) that needs no training data,
+paired with systematic logging of every prediction so that a data-driven
+model can be trained later, once sufficient operational history has
+accumulated. The estimator is described in Section~\ref{sec:design-eta}.
+
+\section{GPS Quality, Filtering, and Map Matching}
+\label{sec:lit-gps}
+Raw GPS is noisy, and a public-facing tracker cannot simply display every
+fix it receives. The classical treatment of reconciling noisy fixes with a
+road network is the Hidden Markov Model map-matching method of Newson and
+Krumm~[12], which jointly considers measurement noise and road-network
+topology to recover the most probable path. HMM map matching is the right
+tool when the vehicle could be anywhere on an arbitrary road network.
+
+A university bus, however, is not anywhere: it follows a small set of
+fixed, pre-defined routes. \system{} exploits this constraint to use a far
+lighter pipeline---an accuracy gate, a physical-plausibility (teleport)
+guard, a stationary-jitter floor, and projection of each fix onto the
+known route polyline. This subset is sufficient to stabilize the displayed
+position and to drive along-route ETA computation, at a small fraction of
+the computational cost of full map matching
+(Section~\ref{sec:design-filter}).
+
+\section{Open Telematics Platforms}
+\label{sec:lit-telematics}
+Commercial GPS trackers speak a large variety of vendor-specific binary
+protocols. Open-source telematics servers such as Traccar~[13] exist
+precisely to absorb this diversity: Traccar implements protocol decoders
+for a wide range of tracker models and exposes the decoded positions
+through a REST API and WebSocket stream, along with geofencing
+primitives. Building on such a platform means a project does not
+reimplement low-level device communication.
+
+\system{} adopts this approach: a self-hosted Traccar instance handles raw
+device ingestion for the Concox GT06S tracker, and the entire
+passenger-facing, ETA-aware, bilingual application layer is built on top
+of it as an independent application server
+(Section~\ref{sec:design-acquisition}).
+
+\section{Research Gap and Positioning of This Work}
+\label{sec:lit-gap}
+Table~\ref{tab:lit-compare} summarizes the review. Across the reviewed
+strands, three gaps recur. First, campus tracking prototypes rely on a
+single position source and stop working when it fails. Second,
+crowdsourced systems avoid hardware but inherit participation-dependent
+coverage. Third, accurate ETA models presuppose historical data that a new
+deployment does not have, and most reported systems are either
+simulation-based or English-only.
+
+\begin{table}[H]
+\caption{Positioning of \system{} against the reviewed literature.}
+\label{tab:lit-compare}
+\centering
+\small
+\begin{tabular}{@{}p{4.6cm}p{4.5cm}p{4.6cm}@{}}
+\toprule
+\textbf{Strand} & \textbf{Typical limitation} & \textbf{\system{} response} \\
+\midrule
+Campus trackers [1], [2] & Single source; English-only &
+Dual-source with arbitration; bilingual UX \\
+Crowdsourced sensing [3], [4] & Coverage needs participants &
+Autonomous fixed tracker; phone only as fallback \\
+Data-driven ETA [7]--[11] & Needs large training history &
+Training-free geometric ETA; logs data for future models \\
+HMM map matching [12] & Heavier than needed for fixed routes &
+Route-constrained filtering and projection \\
+Telematics platforms [13] & Operator-facing, no passenger layer &
+Passenger-centric application layer on top \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+In contrast to single-source prototypes, simulation-only studies, and
+data-hungry prediction models, \system{} contributes a \emph{deployed},
+low-cost system that combines source resilience, a training-data-free ETA
+estimator, and a localized, edge-condition-aware passenger experience,
+evaluated on a real campus fleet over seven weeks. To the best of our
+knowledge, no previously reported university bus tracking system combines
+these properties.
+
+\section{Summary}
+This chapter surveyed five strands of related work and identified the
+recurring gaps: single-source fragility, participation-dependent
+coverage, training-data prerequisites, and the absence of localized,
+passenger-centric deployments. The next chapter translates the resulting
+opportunity into concrete requirements for \system{}.

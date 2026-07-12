@@ -1,0 +1,186 @@
+% =====================================================================
+% FRONT MATTER: cover, title, declaration, approval, acknowledgement, abstract
+% =====================================================================
+
+% ------------------------------ COVER PAGE ------------------------------
+\begin{titlepage}
+\begin{center}
+\includegraphics[width=1.15in]{npiub_logo.png}\\[0.35cm]
+{\large \textbf{NPI UNIVERSITY OF BANGLADESH}}\\[0.1cm]
+{\small Manikganj, Dhaka, Bangladesh}\\[1.1cm]
+
+{\Large \textbf{UniBus Live: A Real-Time Bilingual University Bus\\[0.15cm]
+Tracking System with Resilient Dual-Source\\[0.15cm]
+GPS Acquisition}}\\[1.2cm]
+
+{\normalsize A thesis submitted to the Department of Computer Science and
+Engineering,\\ NPI University of Bangladesh, in partial fulfillment of the
+requirements\\ for the degree of}\\[0.35cm]
+{\large \textbf{Bachelor of Science in Computer Science and Engineering}}\\[1.1cm]
+
+{\normalsize \textbf{Submitted by}}\\[0.25cm]
+\begin{tabular}{ll}
+\textbf{Md.\ Shishir Hossain} & ID: 1005 \\
+\textbf{Md.\ Sajib Hasan}     & ID: 1008 \\
+\textbf{Md.\ Showkat Hossen}  & ID: 1009 \\
+\end{tabular}\\[0.2cm]
+{\small Batch: 12th}\\[0.9cm]
+
+{\normalsize \textbf{Supervised by}}\\[0.25cm]
+{\normalsize \textbf{Mahbubur Rahman Chowdhury}\\
+Senior Lecturer\\
+Department of Computer Science and Engineering\\
+NPI University of Bangladesh}\\[1.0cm]
+
+{\normalsize \textbf{July 2026}}
+\end{center}
+\end{titlepage}
+
+% ------------------------------ DECLARATION ------------------------------
+\chapter*{Declaration}
+\addcontentsline{toc}{chapter}{Declaration}
+\thispagestyle{plain}
+
+We hereby declare that the thesis titled \emph{``UniBus Live: A Real-Time
+Bilingual University Bus Tracking System with Resilient Dual-Source GPS
+Acquisition''} is the outcome of our own work, carried out under the
+supervision of Mahbubur Rahman Chowdhury, Senior Lecturer, Department of
+Computer Science and Engineering, NPI University of Bangladesh. The system
+described here was designed, implemented, deployed, and evaluated by us,
+and the results reported in this thesis were obtained from the operational
+data of our own pilot deployment.
+
+We further declare that neither this thesis nor any part of it has been
+submitted elsewhere for the award of any degree or diploma, and that all
+external sources of information used in this work have been duly
+acknowledged and cited.
+
+\vspace{2.2cm}
+\noindent
+\begin{tabular}{@{}p{0.55\textwidth}@{}p{0.45\textwidth}@{}}
+\rule{5.5cm}{0.4pt} & \\
+\textbf{Md.\ Shishir Hossain} & \\
+ID: 1005, Batch: 12th & \\[1.4cm]
+\rule{5.5cm}{0.4pt} & \\
+\textbf{Md.\ Sajib Hasan} & \\
+ID: 1008, Batch: 12th & \\[1.4cm]
+\rule{5.5cm}{0.4pt} & \\
+\textbf{Md.\ Showkat Hossen} & \\
+ID: 1009, Batch: 12th & \\
+\end{tabular}
+\clearpage
+
+% ------------------------------ APPROVAL ------------------------------
+\chapter*{Approval}
+\addcontentsline{toc}{chapter}{Approval}
+\thispagestyle{plain}
+
+This is to certify that the thesis titled \emph{``UniBus Live: A Real-Time
+Bilingual University Bus Tracking System with Resilient Dual-Source GPS
+Acquisition''}, submitted by Md.\ Shishir Hossain (ID: 1005), Md.\ Sajib
+Hasan (ID: 1008), and Md.\ Showkat Hossen (ID: 1009) of the 12th batch,
+Department of Computer Science and Engineering, NPI University of
+Bangladesh, has been carried out under my supervision. It is hereby
+approved as a partial fulfillment of the requirements for the degree of
+Bachelor of Science in Computer Science and Engineering.
+
+The work embodied in this thesis is, to the best of my knowledge, original
+and has not been submitted elsewhere for any other degree.
+
+\vspace{3.2cm}
+\noindent
+\rule{6.5cm}{0.4pt}\\
+\textbf{Mahbubur Rahman Chowdhury}\\
+Senior Lecturer\\
+Department of Computer Science and Engineering\\
+NPI University of Bangladesh
+\clearpage
+
+% ------------------------------ ACKNOWLEDGEMENT ------------------------------
+\chapter*{Acknowledgement}
+\addcontentsline{toc}{chapter}{Acknowledgement}
+\thispagestyle{plain}
+
+First and foremost, we express our deepest gratitude to the Almighty for
+giving us the strength, patience, and perseverance to complete this work.
+
+We are sincerely grateful to our supervisor, \textbf{Mahbubur Rahman
+Chowdhury}, Senior Lecturer, Department of Computer Science and
+Engineering, NPI University of Bangladesh, for his continuous guidance,
+constructive criticism, and encouragement at every stage of this thesis.
+His insistence on evaluating the system against real operational data,
+rather than simulations, shaped the character of this work.
+
+We thank the \textbf{Department of Computer Science and Engineering, NPI
+University of Bangladesh}, and its faculty members for providing the
+academic foundation on which this project was built, and the university
+transport administration for permitting us to install a GPS tracking
+device on an operational bus and to run a seven-week live pilot on the
+real university fleet.
+
+We are also grateful to the drivers who cooperated with the smartphone
+fallback trials, and to the thirty-eight fellow students who registered as
+pilot passengers, used the application on their daily commutes, and gave
+us the feedback that drove many of the refinements described in this
+thesis.
+
+Finally, we thank our families for their unconditional support throughout
+our undergraduate studies.
+
+\vspace{1.2cm}
+\noindent The Authors\\
+July 2026
+\clearpage
+
+% ------------------------------ ABSTRACT ------------------------------
+\chapter*{Abstract}
+\addcontentsline{toc}{chapter}{Abstract}
+\thispagestyle{plain}
+
+University bus services carry thousands of students every day, yet at many
+institutions in developing regions the riders have no way of knowing where
+a bus actually is: a student standing at a stop cannot tell whether the
+bus departed five minutes ago or is still fifteen minutes away. The
+consequences are missed buses, long unsheltered waits, and avoidable
+crowding. Commercial fleet-tracking products exist, but they are costly,
+oriented toward logistics rather than passengers, and rarely available in
+the local language.
+
+This thesis presents \emph{\system{}}, a complete, deployed, low-cost
+real-time bus tracking platform built for university transport. The system
+consists of a bilingual (English and Bangla) passenger mobile application,
+a web-based administration console, and a central application server
+backed by a 31-model relational database, all hosted on a single low-cost
+virtual private server. Vehicle positions are acquired from two
+independent sources: a fixed, vehicle-grade GPS/GSM tracker that operates
+fully automatically as the primary source---requiring no driver action,
+device, or data connection---and the driver's smartphone as an optional
+automatic fallback, reconciled per fix by a health-based source
+arbitration component. Incoming fixes pass through a quality-filtering
+pipeline before a lightweight geometric estimator projects the position
+onto the route polyline and computes a per-stop arrival time with a
+confidence label. Updates are pushed to subscribed passengers over
+WebSocket within seconds.
+
+The system was evaluated in a seven-week pilot (6~May--23~June~2026) on
+the operational university fleet, covering 9 routes, 3 buses, 38
+registered passengers, and 71 completed trips, during which 46{,}548 raw
+GPS reports were ingested. The median position-acquisition latency was
+5.9~s (mean 7.4~s), and the dual-source design was exercised in practice:
+64\% of trips were tracked by the hardware tracker and 36\% by the
+smartphone fallback, largely reflecting the two buses not yet fitted with
+trackers. The pilot also revealed that roughly 98\% of raw device reports
+were redundant transmissions made while buses were parked; a two-sided
+optimization---device-side reporting reconfiguration (5~s moving / 300~s
+parked) and server-side trip-aware polling throttling (8~s active / 60~s
+idle)---cut idle-period reporting by up to $60\times$ without affecting
+live tracking. Of the arrival and service notifications delivered to
+riders during the pilot, 80\% were read. These results demonstrate that
+resilient, passenger-centric, bilingual real-time bus tracking is feasible
+within a student-project budget.
+
+\vspace{0.5cm}
+\noindent\textbf{Keywords:} real-time systems, GPS tracking, public
+transport, estimated time of arrival, WebSocket, mobile application,
+intelligent transportation systems
+\clearpage

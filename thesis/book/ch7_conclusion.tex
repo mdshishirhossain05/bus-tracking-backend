@@ -1,0 +1,89 @@
+% =====================================================================
+\chapter{Conclusion and Future Work}
+\label{ch:conclusion}
+
+\section{Conclusion}
+This thesis set out to answer a practical question: can a university in
+a developing region give its students live, trustworthy, in-their-own-
+language information about their bus, at a cost the institution can
+actually sustain? The answer, demonstrated on a real fleet rather than
+in simulation, is yes.
+
+We designed, implemented, and deployed \system{}, a complete real-time
+bus tracking platform comprising a bilingual passenger mobile
+application, a web administration console, and a central application
+server backed by a 31-model relational schema---all self-hosted on a
+single low-cost server. Its distinguishing technical ideas are:
+
+\begin{itemize}
+  \item \textbf{Resilient dual-source acquisition.} A fixed,
+  vehicle-grade GPS tracker provides fully automatic, driver-independent
+  positioning as the primary source, while the driver's smartphone
+  serves only as an optional fallback, selected per fix by health-based
+  arbitration. In the pilot this was no theoretical safeguard: 64\% of
+  trips ran on hardware and 36\% on the fallback, sustaining coverage
+  while most of the fleet awaited tracker installation.
+  \item \textbf{A training-free geometric ETA estimator.} Projecting the
+  live position onto the route polyline and dividing remaining distance
+  by a rolling-average speed yields a per-stop arrival estimate with a
+  confidence label from the first day of deployment, with every
+  prediction logged for future learning-based refinement.
+  \item \textbf{An edge-condition-aware passenger experience.} Pre-trip
+  vehicle awareness, explicit staleness signalling, offline retention,
+  and proximity-based drop-off alerts keep the interface honest and
+  informative precisely where naive trackers show a blank or frozen
+  map---in both English and Bangla.
+\end{itemize}
+
+The seven-week pilot on the operational fleet (9 routes, 3 buses, 38
+riders, 71 trips, 46{,}548 GPS reports) established feasibility with a
+median position-acquisition latency of 5.9\,s and an 80\% read rate on
+delivered notifications. Just as importantly, the pilot taught a lesson
+that no simulation would have: roughly 98\% of raw device reports were
+redundant idle-state transmissions. The resulting two-sided
+optimization---asymmetric device reporting (5\,s moving / 300\,s
+parked) and trip-aware server polling (8\,s active / 60\,s idle)---cut
+idle-period reporting by up to $60\times$ while leaving live tracking
+untouched, and stands as a concrete, transferable design guideline for
+any scheduled-fleet tracking deployment: \emph{couple reporting cadence
+to vehicle state and timetable, at both the device and the server.}
+
+\section{Future Work}
+\label{sec:concl-future}
+The deployed system and its accumulating operational data open several
+concrete directions:
+
+\begin{enumerate}
+  \item \textbf{Learning-based ETA prediction.} Every prediction and
+  every arrival is already logged. Once the trajectory history is large
+  enough, a data-driven model (Section~\ref{sec:lit-eta}) can be trained
+  and evaluated directly against the geometric baseline on the same
+  logged data.
+  \item \textbf{Fleet-wide tracker installation.} Fitting the remaining
+  buses reduces the smartphone path to a rarely needed safety net and
+  enables uniform fleet analytics.
+  \item \textbf{Ignition-coupled reporting.} Wiring the tracker's ACC
+  line would let the device sleep with the engine, completing the
+  efficiency work of Section~\ref{sec:eval-efficiency} with
+  engine-state-triggered reporting and distance-based thresholds.
+  \item \textbf{Full timetable integration.} Associating every trip with
+  its scheduled departure enables systematic schedule-adherence
+  analytics for the transport office---the administrative counterpart of
+  the passenger-facing ETAs.
+  \item \textbf{Crowd-sourced occupancy.} At larger scale, passenger
+  participation could add ``how full is the bus'' to ``where is the
+  bus,'' complementing rather than carrying the positioning system.
+  \item \textbf{A formal usability study.} A wider, longer deployment
+  with a structured passenger study would quantify the experience
+  benefits that the pilot's 80\% notification read rate only hints at.
+\end{enumerate}
+
+\section{Closing Remark}
+The deepest lesson of this project is methodological. The system's most
+valuable finding---the 98\% idle-reporting waste---was not visible in
+any design document, simulator, or code review. It appeared only in the
+operational data of a real deployment, and once visible, it was fixable
+within days. Building the audit layer first, deploying early, and
+letting production data drive the engineering agenda turned a student
+project into an evaluated system; we commend the same path to those who
+follow.

@@ -1,0 +1,180 @@
+% =====================================================================
+\chapter{Introduction}
+\label{ch:intro}
+
+\section{Background}
+For a large share of the students of any university, the day begins and
+ends with a bus. University transport is often the only affordable way to
+travel between home and campus, and in Bangladesh---where many students
+commute considerable distances into district towns such as Manikganj---the
+university bus is a daily necessity rather than a convenience. Yet the
+information available to the rider about that bus has barely changed in
+decades. The timetable on a notice board says when the bus is
+\emph{supposed} to leave; nothing tells a student where the bus
+\emph{actually} is right now.
+
+Meanwhile, real-time vehicle tracking itself is a mature technology.
+Satellite positioning receivers are inexpensive, cellular data coverage
+reaches nearly every road a university bus travels, and every student
+carries a smartphone capable of rendering a live map. Ride-sharing
+platforms have made the ``watch your vehicle approach on the map''
+experience an everyday expectation. The technical ingredients for live bus
+tracking are therefore all available; what has been missing at
+institutions like ours is a system that assembles those ingredients at a
+cost a university transport office can justify, in a form students will
+actually use, and in the language they speak.
+
+\section{Motivation}
+The motivation for this work came directly from our own daily experience
+and that of our fellow students. A student who arrives at a roadside stop
+faces an information vacuum with real costs:
+
+\begin{itemize}
+  \item \textbf{Missed buses.} If the bus passed early, the student may
+  wait for a vehicle that has already gone, and discover it only when it
+  is too late to arrange an alternative.
+  \item \textbf{Wasted waiting time.} If the bus is late, the student
+  stands at the stop---often without shelter, in heat or rain---for time
+  that could have been spent at home or in the library had the delay been
+  visible in advance.
+  \item \textbf{Crowding and uncertainty at the origin.} Without knowing
+  when a bus will actually depart, students cluster early around the
+  boarding point, producing avoidable congestion.
+\end{itemize}
+
+Commercial fleet-tracking products could in principle address this, but
+three barriers make them a poor fit for a university in a developing
+region. First, their subscription pricing is set for commercial logistics
+fleets, not for a cost-sensitive academic transport office. Second, they
+are built for the fleet \emph{operator}: their web dashboards answer
+``where are my vehicles?'' for a manager, not ``when will my bus reach my
+stop?'' for a passenger. Third, their interfaces are almost always
+English-only, whereas a large portion of our student population is more
+comfortable in Bangla.
+
+We therefore set out to build, deploy, and evaluate a complete system of
+our own---not a simulation or a prototype confined to a laboratory, but a
+platform running on the real university fleet with real riders.
+
+\section{Problem Statement}
+The problem addressed by this thesis can be stated as follows:
+
+\begin{quote}
+\emph{Students using university transport cannot observe the live position
+of their bus or a dependable estimate of its arrival time at their own
+stop. Existing commercial tracking solutions are too costly for
+institutional adoption, are designed for fleet operators rather than
+passengers, and are not localized. Furthermore, tracking approaches that
+depend on a driver's smartphone are fragile---they fail whenever the
+driver forgets, declines, or is unable to run the tracking application.}
+\end{quote}
+
+Decomposing this, the specific technical problems to solve were:
+
+\begin{enumerate}
+  \item \textbf{Autonomous position acquisition.} Obtain a continuous
+  stream of bus positions without depending on any daily human action,
+  while still tolerating the failure or absence of the tracking hardware.
+  \item \textbf{Noise robustness.} Convert raw, noisy GPS fixes---which
+  contain urban scatter, occasional impossible jumps, and stationary
+  jitter---into a stable position that can be shown to the public.
+  \item \textbf{Passenger-meaningful information.} Translate a raw
+  position into what a rider actually needs: the arrival time at
+  \emph{their} stop, the state of the bus \emph{before} departure, and an
+  alert when their drop-off approaches.
+  \item \textbf{Low-latency delivery at low cost.} Push every update to
+  every interested phone within seconds, using infrastructure cheap enough
+  for a student-project budget.
+  \item \textbf{Localization.} Present the entire experience in both
+  English and Bangla.
+\end{enumerate}
+
+\section{Objectives}
+The objectives of this thesis work were set at the start of the project
+and are listed here in the order in which the system must satisfy them:
+
+\begin{enumerate}
+  \item To design a three-tier, event-driven architecture for real-time
+  university bus tracking that runs entirely on a single low-cost server.
+  \item To implement resilient dual-source GPS acquisition, in which a
+  fixed vehicle-grade GPS/GSM tracker acts as the fully automatic primary
+  source and the driver's smartphone acts only as an optional automatic
+  fallback, with per-fix health-based arbitration between them.
+  \item To implement a location-quality filtering pipeline that gates
+  every fix on accuracy, physical plausibility, and minimum movement
+  before it can move the publicly visible position.
+  \item To design a lightweight, training-data-free arrival-time estimator
+  that produces a per-stop ETA with a confidence label on every accepted
+  fix.
+  \item To build a bilingual (English/Bangla) passenger mobile application
+  that remains informative in edge conditions---before departure, during
+  signal loss, and near the rider's stop---and a web administration
+  console for routes, schedules, fleet, and live operations.
+  \item To deploy the complete system on the operational university fleet
+  and evaluate it over a multi-week pilot using real operational data.
+\end{enumerate}
+
+\section{Scope of the Work}
+The scope of this thesis covers the complete life of a position report:
+from the GPS receiver on the bus, through cellular transmission, decoding,
+arbitration, filtering, ETA computation, storage, and publication, to the
+pixel on a passenger's screen. It includes the hardware selection and
+configuration of the on-vehicle tracker, the backend server and database,
+the realtime delivery layer, the passenger application, the administration
+console, and the evaluation of the deployed whole.
+
+Certain related problems are deliberately out of scope. The system does
+not attempt learning-based arrival prediction (it logs the data needed to
+train such models later); it does not process payments or ticketing; it
+does not measure passenger occupancy at scale; and the pilot was confined
+to one university's fleet in and around Manikganj rather than a
+multi-institution deployment. These boundaries are revisited as future
+work in Chapter~\ref{ch:conclusion}.
+
+\section{Contributions}
+The principal contributions of this thesis are:
+
+\begin{enumerate}
+  \item \textbf{A deployed end-to-end architecture} for real-time
+  university bus tracking centred on an autonomous fixed GPS tracker with
+  an optional, health-arbitrated smartphone fallback, providing resilient
+  coverage at low cost (Chapters~\ref{ch:design}
+  and~\ref{ch:implementation}).
+  \item \textbf{A lightweight geometric ETA estimator} that projects the
+  live position onto the route polyline and derives per-stop arrival times
+  from a rolling-average speed, annotated with a confidence level, and
+  requiring no training data (Section~\ref{sec:design-eta}).
+  \item \textbf{A passenger-facing design contribution}: a bilingual user
+  experience with pre-trip vehicle awareness, staleness signalling, and
+  proximity-based drop-off alerts, which keeps the interface informative
+  precisely in the edge conditions where naive trackers show a blank map
+  (Section~\ref{sec:impl-passenger}).
+  \item \textbf{An operational evaluation} of the deployed system over a
+  seven-week pilot on a real fleet, reporting acquisition latency,
+  source-fallback usage, and passenger engagement
+  (Chapter~\ref{ch:evaluation}).
+  \item \textbf{The identification and elimination of idle-reporting
+  waste}: pilot data showed that roughly 98\% of raw device reports were
+  transmitted while buses were parked; a two-sided optimization (device
+  reporting cadence and server polling cadence) cut idle-period reporting
+  by up to $60\times$ without affecting live tracking
+  (Section~\ref{sec:eval-efficiency}).
+\end{enumerate}
+
+\section{Organization of the Thesis}
+The remainder of this thesis is organized as follows.
+Chapter~\ref{ch:literature} reviews related work on campus bus tracking,
+smartphone-based positioning, arrival-time prediction, GPS quality
+handling, and open telematics platforms, and positions this work against
+it. Chapter~\ref{ch:analysis} analyses the system's stakeholders and
+requirements and records the feasibility study and development
+methodology. Chapter~\ref{ch:design} presents the system architecture and
+the design of each major component. Chapter~\ref{ch:implementation}
+describes the implementation of the backend, the realtime layer, the two
+client applications, and the on-vehicle hardware configuration.
+Chapter~\ref{ch:evaluation} reports the seven-week pilot evaluation and
+discusses its findings, including the idle-reporting optimization.
+Chapter~\ref{ch:conclusion} concludes and outlines future work. The
+appendices record the tracker's SMS configuration commands, the
+operator-configurable parameters of the processing pipeline, and
+representative screens of the passenger application.

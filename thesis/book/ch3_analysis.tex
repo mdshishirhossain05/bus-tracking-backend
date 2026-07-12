@@ -1,0 +1,189 @@
+% =====================================================================
+\chapter{System Analysis and Requirements}
+\label{ch:analysis}
+
+\section{Stakeholder Analysis}
+Four groups of stakeholders interact with the system, each with distinct
+needs:
+
+\begin{description}
+  \item[Passengers (students and staff).] The primary beneficiaries. They
+  need to see the live position of their bus, the estimated arrival time
+  at \emph{their own} stop, the day's schedules, and timely alerts---in
+  English or Bangla according to their preference. They interact only
+  with the mobile application.
+  \item[Drivers.] Deliberately, drivers have \emph{no required role} in
+  normal operation: the fixed tracker reports automatically. A driver
+  participates only in the optional fallback path, by carrying a
+  smartphone that publishes location when a bus has no working tracker.
+  \item[Transport administrators.] They manage routes, stops, schedules,
+  buses, GPS devices, and driver assignments, and monitor the whole fleet
+  on a live operations map. They interact with the web administration
+  console.
+  \item[The institution.] The university requires the recurring cost to
+  stay within a modest budget, and the deployment to run on its real
+  fleet without disrupting operations.
+\end{description}
+
+\section{Functional Requirements}
+The functional requirements were derived from the stakeholder analysis
+and refined during early development. Table~\ref{tab:freq} lists the
+principal requirements; each is referenced from the design chapter where
+it is satisfied.
+
+\begin{table}[H]
+\caption{Principal functional requirements.}
+\label{tab:freq}
+\centering
+\small
+\begin{tabular}{@{}llp{9.2cm}@{}}
+\toprule
+\textbf{ID} & \textbf{Area} & \textbf{Requirement} \\
+\midrule
+FR-1 & Acquisition & Ingest positions automatically from a fixed
+vehicle GPS tracker with no driver involvement. \\
+FR-2 & Acquisition & Accept authenticated position reports from a driver
+smartphone as an optional secondary source. \\
+FR-3 & Acquisition & Select the best available source per fix,
+automatically and without passenger-visible artefacts. \\
+FR-4 & Quality & Reject inaccurate, physically implausible, and
+jittery fixes before they affect the public position. \\
+FR-5 & ETA & Compute an arrival estimate for every upcoming stop of the
+active route on each accepted fix, with a confidence label. \\
+FR-6 & Delivery & Push position and ETA updates to all subscribed
+passengers within seconds over a persistent connection. \\
+FR-7 & Lifecycle & Show the bus state before departure (parked,
+approaching origin, arrived at origin) instead of a blank map. \\
+FR-8 & Lifecycle & Mark displayed data as stale when the latest fix ages
+beyond a threshold. \\
+FR-9 & Alerts & Notify a subscribed rider when the bus reaches an 80\,m
+radius of a stop, including their chosen drop-off stop. \\
+FR-10 & Localization & Provide the complete passenger experience in both
+English and Bangla, switchable in-app. \\
+FR-11 & Administration & Manage routes, stops, schedules, buses, GPS
+devices, and user roles through a web console. \\
+FR-12 & Administration & Display all active vehicles on a live
+operations map for transport staff. \\
+FR-13 & Audit & Log every raw report, every accepted fix, and every
+ETA prediction for later analysis. \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\section{Non-Functional Requirements}
+\begin{table}[H]
+\caption{Principal non-functional requirements.}
+\label{tab:nfreq}
+\centering
+\small
+\begin{tabular}{@{}llp{9.2cm}@{}}
+\toprule
+\textbf{ID} & \textbf{Quality} & \textbf{Requirement} \\
+\midrule
+NFR-1 & Latency & A position fix should reach subscribed passengers
+within seconds of capture under normal network conditions. \\
+NFR-2 & Resilience & Loss of any single position source must degrade
+coverage gracefully, not eliminate it. \\
+NFR-3 & Cost & The entire backend must run on one low-cost virtual
+private server; no managed cloud services are required. \\
+NFR-4 & Efficiency & Reporting and polling cadence must not waste
+cellular data or vehicle battery while buses are parked. \\
+NFR-5 & Security & All client--server communication is authenticated;
+role-based authorization separates passengers from administrators. \\
+NFR-6 & Scalability & Realtime fan-out must be able to scale
+horizontally across server processes without losing consistency. \\
+NFR-7 & Usability & The passenger app must remain informative during
+edge conditions (pre-trip, signal loss, stationary bus). \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+NFR-4 deserves a remark: it was \emph{added during the pilot}, when
+operational data revealed that roughly 98\% of raw device reports were
+being transmitted while buses were parked. The discovery and the
+resulting optimization are treated fully in
+Section~\ref{sec:eval-efficiency}; the requirement is recorded here
+because it reshaped both the device configuration and the server's
+polling design.
+
+\section{Feasibility Study}
+
+\subsection{Technical Feasibility}
+Every component of the proposed system relies on proven, freely available
+technology: a mass-produced vehicle GPS/GSM tracker (Concox GT06S), an
+open-source telematics server (Traccar) that already implements the
+tracker's binary protocol, an open-source relational database
+(PostgreSQL), an in-memory store (Redis), and mature application
+frameworks (Node.js/Express for the server, React Native/Expo for the
+mobile app, Next.js for the console). No component required custom
+hardware or proprietary licensing, so technical feasibility was
+established by construction.
+
+\subsection{Economic Feasibility}
+The recurring infrastructure is a single low-cost virtual private server
+hosting the application server, Traccar, PostgreSQL, and Redis together.
+The one-time hardware cost is the tracker unit and its SIM per bus. Both
+figures sit comfortably within a student-project budget, and---more
+importantly for adoption---within what a university transport office
+could sustain for a full fleet. The economic design goal, ``everything on
+one server, no external paid services,'' held throughout the pilot.
+
+\subsection{Operational Feasibility}
+Operational feasibility hinged on one question: can the system run
+without adding work for anyone? The hardware-first design answers it. The
+tracker is hard-wired to the bus and reports automatically; drivers need
+not carry, charge, or operate anything; administrators interact with the
+console only to maintain routes and schedules, which they already did on
+paper. The seven-week unattended pilot (Chapter~\ref{ch:evaluation})
+confirmed this in practice.
+
+\section{Development Methodology}
+The system was developed iteratively. An initial vertical slice---one
+bus, one route, raw positions on a map---was deployed early, and each
+subsequent iteration added one capability (quality filtering, ETAs, trip
+lifecycle, notifications, bilingual UI, the administration console)
+followed by observation on the live fleet. Two practices shaped the
+result. First, \emph{operational data drove priorities}: the staleness
+indicator, the pre-trip map state, and ultimately the idle-reporting
+optimization all originated from watching real deployment behaviour
+rather than from the original plan. Second, \emph{every layer logs}: raw
+ingests, accepted fixes, trip events, and ETA predictions are all
+persisted, which is what later made the evaluation in
+Chapter~\ref{ch:evaluation} possible directly from the production
+database.
+
+\section{Tools and Technologies}
+Table~\ref{tab:stack} summarizes the technology choices; the rationale
+for each appears in the corresponding design section.
+
+\begin{table}[H]
+\caption{Technology stack of \system{}.}
+\label{tab:stack}
+\centering
+\small
+\begin{tabular}{@{}lll@{}}
+\toprule
+\textbf{Layer} & \textbf{Technology} & \textbf{Role} \\
+\midrule
+Vehicle & Concox GT06S & Fixed GPS/GSM tracker (primary source) \\
+Vehicle & Android smartphone & Optional driver-side fallback source \\
+Ingestion & Traccar & Tracker protocol decoding, device management \\
+Server & Node.js + Express (TypeScript) & Application server \\
+ORM & Prisma & Typed access to the relational schema \\
+Database & PostgreSQL & System of record (31 models) \\
+Cache/bus & Redis & Hot-path cache and pub/sub back-plane \\
+Realtime & Socket.IO & WebSocket rooms per active trip \\
+Mobile & React Native + Expo & Bilingual passenger application \\
+Web & Next.js (React) & Administration console \\
+Maps & Google Maps APIs & Map rendering and route building \\
+Hosting & Single VPS & All backend components self-hosted \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\section{Summary}
+This chapter identified the system's four stakeholder groups, fixed
+thirteen functional and seven non-functional requirements, established
+technical, economic, and operational feasibility, and recorded the
+iterative, data-driven development methodology and technology stack. The
+next chapter presents the design that satisfies these requirements.

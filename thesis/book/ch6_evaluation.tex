@@ -1,0 +1,267 @@
+% =====================================================================
+\chapter{Testing, Results and Evaluation}
+\label{ch:evaluation}
+
+\section{Testing Approach}
+\label{sec:eval-testing}
+The system was verified at four levels before and during the pilot, in
+keeping with the iterative methodology of Chapter~\ref{ch:analysis}:
+
+\begin{description}
+  \item[Static verification.] The entire server and mobile codebase is
+  written in TypeScript and kept free of type errors; the Prisma ORM
+  extends this guarantee to the database boundary, since queries are
+  type-checked against the 31-model schema at compile time.
+  \item[Component verification.] Each pipeline stage was exercised
+  against live data as it was added. The filtering thresholds in
+  particular were tuned empirically: rejected fixes are logged with
+  their rejection reason (Section~\ref{sec:impl-arbitration}), and
+  reviewing those logs during early deployment confirmed that the gates
+  rejected genuine noise---urban scatter, impossible jumps---without
+  suppressing legitimate motion.
+  \item[End-to-end verification on the road.] The complete chain---GPS
+  fix, cellular transmission, decoding, arbitration, filtering, ETA,
+  push, and on-screen rendering---was verified with live test drives on
+  the actual routes, observing the passenger application against the
+  visible position of the real bus. Device-configuration changes were
+  verified from two independent vantage points (Traccar's report view
+  and the server's ingest log, Section~\ref{sec:impl-device}).
+  \item[Continuous operational verification.] Because every layer logs
+  (FR-13), the running pilot itself acted as a seven-week continuous
+  test: anomalies surfaced in the audit data rather than in user
+  reports, which is also how the idle-reporting problem of
+  Section~\ref{sec:eval-efficiency} was found.
+\end{description}
+
+\section{Pilot Deployment and Dataset}
+\label{sec:eval-dataset}
+\system{} was evaluated in a seven-week pilot, from 6~May to
+23~June~2026, on the operational university fleet---real buses, real
+routes, real riders, zero simulation. The deployment covered 9 routes
+and 3 buses, one of which was equipped with the fixed hardware tracker;
+38 passenger accounts were registered, and 71 completed trips were
+recorded, during which 46{,}548 raw GPS reports were ingested.
+Table~\ref{tab:dataset} summarizes the dataset.
+
+\begin{table}[H]
+\caption{Pilot deployment summary.}
+\label{tab:dataset}
+\centering
+\begin{tabular}{@{}lr@{}}
+\toprule
+\textbf{Quantity} & \textbf{Value} \\
+\midrule
+Deployment span            & 7 weeks (6 May -- 23 June 2026) \\
+Routes                     & 9 \\
+Buses                      & 3 (1 fitted with hardware tracker) \\
+Registered passengers      & 38 \\
+Completed trips            & 71 \\
+Raw GPS reports ingested   & 46{,}548 \\
+In-trip fixes retained     & 864 \\
+Mean GPS fixes per trip    & 37.6 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+One number in Table~\ref{tab:dataset} demands immediate attention: of
+46{,}548 raw reports, only 864 were retained as in-trip fixes. The
+remaining ${\sim}98\%$ were transmitted while buses were parked. This
+single observation---invisible during design, unmistakable in the
+operational data---motivated the efficiency optimization analysed in
+Section~\ref{sec:eval-efficiency}, and is in our view one of the most
+instructive findings of the whole project.
+
+\section{Measurement Methodology}
+\label{sec:eval-method}
+All metrics are computed from the production database; no separate test
+harness or synthetic workload was used. Position-acquisition latency is
+the difference between each fix's device-reported timestamp and its
+server-receipt timestamp, both recorded at ingestion
+(Section~\ref{sec:impl-traccar}). Source usage is taken from the
+canonical source selected per trip. Passenger engagement is measured
+from the notification delivery and read records. ETA accuracy is
+assessed through the prediction log: every predicted arrival instant is
+retained so it can be compared against the corresponding recorded stop
+arrival. Because the pilot is small, we report results as a feasibility
+demonstration rather than as population statistics.
+
+\section{Results}
+
+\subsection{Position-Acquisition Latency}
+\label{sec:eval-latency}
+Across 46{,}286 fixes with valid timestamp pairs, the latency from
+device fix to server receipt was:
+
+\begin{table}[H]
+\caption{Position-acquisition latency (device fix to server receipt).}
+\label{tab:latency}
+\centering
+\begin{tabular}{@{}lr@{}}
+\toprule
+\textbf{Statistic} & \textbf{Latency} \\
+\midrule
+Median            & 5.9\,s \\
+Mean              & 7.4\,s \\
+90th percentile   & 9.9\,s \\
+95th percentile   & 11.1\,s \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+A further median 1.2\,s elapsed between server receipt and persistence.
+The latency distribution is bounded primarily by the 8\,s Traccar
+polling interval rather than by network transport: when the WebSocket
+push path is active a fix arrives within about a second, and the polling
+path fills the remainder of the distribution. For the passenger this
+means the map reflects reality within roughly six seconds in the median
+case---comfortably inside the ``live'' perception window for a vehicle
+that takes minutes between stops (NFR-1 satisfied).
+
+\subsection{Source Resilience}
+\label{sec:eval-sources}
+The dual-source design was exercised in earnest rather than remaining a
+theoretical safeguard. Of the 70 trips with a recorded canonical source,
+45 (64\%) were tracked via the fixed hardware tracker and 25 (36\%) via
+the smartphone fallback. The fallback share largely reflects the two
+buses not yet fitted with trackers---exactly the deployment reality the
+fallback was designed for. Coverage was sustained across the whole
+fleet throughout the pilot even though only one bus carried hardware.
+
+Two readings follow. First, graceful degradation works: a bus without a
+tracker remained trackable, and mid-trip handovers produced no
+passenger-visible artefacts. Second, the design remains hardware-first:
+the tracker operates with no driver involvement, and as trackers are
+fitted fleet-wide the smartphone path reduces to a rarely needed safety
+net (NFR-2 satisfied).
+
+\subsection{ETA Estimation Behaviour}
+\label{sec:eval-eta}
+The geometric estimator produced a per-stop arrival prediction on every
+accepted fix, each carrying its \textsc{high}/\textsc{medium}/\textsc{low}
+confidence label. Every prediction was logged against its trip and stop,
+so mean absolute error against recorded stop arrivals can be measured
+cumulatively as operational data grows. Within the pilot itself the
+prediction log was validated end-to-end (predictions recorded, arrivals
+recorded, joinable per stop); a statistically meaningful MAE requires
+more arrivals per stop than seven weeks provided, and is deliberately
+reported as accumulating future evidence rather than overstated from
+sparse data.
+
+\subsection{Passenger Engagement}
+\label{sec:eval-engagement}
+Of 45 arrival and service notifications delivered to riders during the
+pilot, 36 (80\%) were read. For a passive daily-utility application this
+read rate indicates that the alerts were genuinely attended to rather
+than dismissed as noise, supporting the design decision to invest in
+proximity-based drop-off alerts (FR-9).
+
+\section{The Idle-Reporting Problem and Optimization}
+\label{sec:eval-efficiency}
+This section analyses the pilot's most consequential finding.
+
+\subsection{The Discovery}
+The fixed-interval tracker transmitted a fix every 5 seconds whenever it
+was powered---and it is wired to the vehicle battery, so it was always
+powered. Buses, however, spend most of their day parked. The result, in
+plain numbers: of 46{,}548 raw reports, only 864 fell inside any active
+trip. Roughly \textbf{98\% of all transmissions were waste}---consuming
+cellular data on the tracker's SIM, drawing on the bus battery, and
+occupying server ingestion for positions nobody would ever look at.
+
+Nothing in the design phase predicted this, because each individual
+report is cheap; only the operational aggregate exposed the cost. This
+is precisely the kind of finding that distinguishes a deployed
+evaluation from a simulation.
+
+\subsection{The Two-Sided Fix}
+The waste was attacked at both ends of the pipeline:
+
+\begin{itemize}
+  \item \textbf{Device side.} The tracker was reconfigured over SMS
+  (\texttt{TIMER,5,300\#}, Section~\ref{sec:impl-device}) to an
+  asymmetric cadence: every 5\,s while moving, every 300\,s while
+  static---a $60\times$ reduction in parked-state transmissions at the
+  source, saving cellular data and battery on the vehicle itself.
+  \item \textbf{Server side.} The Traccar polling job was made
+  trip-aware: full-rate 8\,s polling now applies only to buses in an
+  active trip or pre-trip window, while idle buses are polled every
+  60\,s---a $7.5\times$ reduction in idle polling, leaving the WebSocket
+  push path and on-trip tracking untouched.
+\end{itemize}
+
+\begin{table}[H]
+\caption{Idle-reporting efficiency optimization.}
+\label{tab:efficiency}
+\centering
+\begin{tabular}{@{}llrrr@{}}
+\toprule
+\textbf{Layer} & \textbf{Parameter} & \textbf{Before} & \textbf{After}
+& \textbf{Reduction} \\
+\midrule
+Device (GT06S) & Parked report interval & 5\,s & 300\,s & $60\times$ \\
+Server         & Idle poll interval     & 8\,s & 60\,s  & $7.5\times$ \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{Verification}
+The device-side change was verified from two independent vantage
+points: the per-position timestamps in Traccar's report view, and the
+server's own ingest log. Both showed parked-state fixes spaced by
+minutes rather than seconds after the change, while a live test drive
+confirmed that motion still produced dense five-second fixes---that is,
+the optimization removed only the redundant reports, not the live
+tracking (NFR-4 satisfied). After the optimization the server ingests
+essentially only the dense fixes of active trips plus a sparse
+five-minute parked heartbeat per bus, in place of the previous
+continuous five-second stream.
+
+\section{Requirements Coverage}
+Table~\ref{tab:coverage} closes the loop between
+Chapter~\ref{ch:analysis} and the pilot.
+
+\begin{table}[H]
+\caption{Requirements coverage demonstrated in the pilot.}
+\label{tab:coverage}
+\centering
+\small
+\begin{tabular}{@{}lp{10.6cm}@{}}
+\toprule
+\textbf{Req.} & \textbf{Pilot evidence} \\
+\midrule
+FR-1--FR-3 & 64\%/36\% tracker/fallback split across 70 sourced trips;
+mid-trip handovers without artefacts. \\
+FR-4 & Rejected fixes logged with reasons; displayed positions stable
+throughout. \\
+FR-5 & Per-stop ETA with confidence on every accepted fix; all
+predictions logged. \\
+FR-6 & Median 5.9\,s acquisition latency; push delivery on every
+accepted update. \\
+FR-7, FR-8 & Pre-trip vehicle state shown before departure; staleness
+flagged within 30\,s. \\
+FR-9 & 45 notifications delivered; 80\% read. \\
+FR-10 & All pilot riders used the bilingual interface; both scripts
+rendered. \\
+FR-11--FR-12 & 9 routes, 3 buses, and all schedules administered through
+the console. \\
+FR-13 & Entire evaluation computed from production logs alone. \\
+NFR-1--NFR-7 & Addressed respectively in
+Sections~\ref{sec:eval-latency}, \ref{sec:eval-sources},
+\ref{sec:impl-deploy}, \ref{sec:eval-efficiency},
+\ref{sec:design-security}, \ref{sec:design-realtime},
+and \ref{sec:impl-passenger}. \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\section{Limitations}
+\label{sec:eval-limitations}
+The results must be read with the pilot's boundaries in mind. The scale
+is small---seven weeks, 3 buses, 38 riders---and a subset of trips were
+operational tests. Only one bus carried the hardware tracker, so the
+64/36 source split reflects fleet hardware coverage as much as tracker
+reliability. The GT06S does not report a per-fix accuracy value, so
+quality filtering is evaluated at the trip level rather than per fix.
+Schedule-adherence analysis was limited by incomplete timetable
+association during the pilot. The findings therefore demonstrate
+feasibility; they do not claim city-scale statistical generality.
