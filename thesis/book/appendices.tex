@@ -108,14 +108,44 @@ push events & Passenger / Admin \\
 
 \chapter{Passenger Application Screens}
 \label{app:screens}
-Figure~\ref{fig:screens-app} reproduces the representative passenger
-screens at full width: (a) live tracking of a moving bus with the
-next-stop ETA; (b) on-route status with the next stop and current speed;
-(c) today's schedules; (d) the in-app English/Bangla language toggle.
+This appendix reproduces screens of the deployed passenger application,
+captured on an Android device during operation on the real routes.
+Figure~\ref{fig:screens-app} shows the core tracking experience;
+Figure~\ref{fig:screens-alerts} shows the alerting and engagement
+surfaces, including the honest edge-condition states discussed in
+Section~\ref{sec:impl-passenger}.
 
 \begin{figure}[H]
 \centering
-\includegraphics[width=\textwidth]{screens.png}
-\caption{The bilingual passenger application at full page width.}
+\includegraphics[width=0.235\textwidth]{shots/pretrip_map.jpg}\hfill
+\includegraphics[width=0.235\textwidth]{shots/active_trip.jpg}\hfill
+\includegraphics[width=0.235\textwidth]{shots/schedules.jpg}\hfill
+\includegraphics[width=0.235\textwidth]{shots/language.jpg}
+\caption[Core tracking screens of the passenger application]{Core
+tracking experience. Left to right: (a) the live map during the
+\textsc{pre\_trip} window---the bus is rendered at its pre-departure
+position with a ``getting ready'' state, so the map is never blank
+before departure; (b) the active-trips view showing a live bus
+(\textsc{bus-01}) on route with its ETA to the rider's stop and a
+one-tap \emph{Live Track} action; (c) today's schedules grouped by day
+and route; (d) the in-app language setting with the English/Bangla
+toggle.}
 \label{fig:screens-app}
+\end{figure}
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.235\textwidth]{shots/notif_list.jpg}\hfill
+\includegraphics[width=0.235\textwidth]{shots/notif_shade.jpg}\hfill
+\includegraphics[width=0.235\textwidth]{shots/trip_stats.jpg}\hfill
+\includegraphics[width=0.235\textwidth]{shots/empty_bn.jpg}
+\caption[Alerting and engagement screens]{Alerting and engagement
+surfaces. Left to right: (a) the in-app notification feed recording trip
+events (bus warming up, departed, reached a stop); (b) a system push
+notification delivered outside the app announcing that the bus reached
+the campus; (c) the rider's trip history and statistics (trips tracked,
+routes used, time tracked); (d) the Bangla-localized empty state shown
+when no bus is currently running---an example of the fully bilingual
+interface (FR-10).}
+\label{fig:screens-alerts}
 \end{figure}
