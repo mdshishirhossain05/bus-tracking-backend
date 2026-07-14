@@ -69,7 +69,9 @@ pilot; the median end-to-end acquisition latency was 5.9\,s.}
 
 \subsection{Primary Source: Fixed Vehicle Tracker}
 The primary source is a Concox GT06S, a vehicle-grade GPS/GSM tracker
-hard-wired to the bus's electrical system. While the vehicle moves, the
+hard-wired to the bus's electrical system; the satellite-positioning
+principles underlying such receivers are treated comprehensively by
+Kaplan and Hegarty~[23]. While the vehicle moves, the
 unit obtains a satellite fix every 5 seconds and transmits it over the
 cellular network (TCP over GSM) to a self-hosted Traccar telematics
 server, which implements the tracker's binary protocol and decodes each
@@ -284,8 +286,9 @@ without any additional instrumentation.
 
 \section{Realtime Delivery Design}
 \label{sec:design-realtime}
-Realtime delivery uses Socket.IO over WebSocket. Each active trip is a
-logical \emph{room}; a passenger tracking a trip joins that trip's room
+Realtime delivery uses Socket.IO over WebSocket, the IETF-standardized
+protocol that provides a persistent, full-duplex channel over a single
+TCP connection~[24]. Each active trip is a logical \emph{room}; a passenger tracking a trip joins that trip's room
 and thereafter receives only that trip's events, bounding per-client
 traffic to the single vehicle being observed. Redis serves as the
 publish/subscribe back-plane: accepted canonical updates and recomputed

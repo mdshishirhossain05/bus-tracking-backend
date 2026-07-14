@@ -154,7 +154,13 @@ database.
 
 \section{Tools and Technologies}
 Table~\ref{tab:stack} summarizes the technology choices; the rationale
-for each appears in the corresponding design section.
+for each appears in the corresponding design section. All server and
+client components are built on freely available, industry-standard
+platforms: the Node.js runtime~[14] with the Express framework~[15] and
+the Prisma ORM~[16] on the server; PostgreSQL~[17] and Redis~[18] for
+persistence and messaging; Socket.IO~[19] for realtime delivery; and
+React Native~[20] with Expo~[21] for the mobile applications, with
+Next.js~[22] for the web console.
 
 \begin{table}[H]
 \caption{Technology stack of \system{}.}
