@@ -146,6 +146,55 @@ toggle. Place names render in both scripts.}
 \label{fig:screens}
 \end{figure}
 
+\section{Driver Mobile Application (Fallback Publisher)}
+\label{sec:impl-driver}
+The optional smartphone fallback of Section~\ref{sec:design-acquisition}
+is served by a separate, purpose-built driver application (React Native
+and Expo, distributed directly to drivers rather than publicly). It is
+deliberately minimal---a login screen and a single home screen---because
+its only job is to publish the bus position when a vehicle has no
+working tracker. Figure~\ref{fig:driver} shows its principal states.
+
+Four design decisions define it:
+
+\begin{itemize}
+  \item \textbf{Explicit sharing lifecycle.} The app shares nothing
+  until the driver taps \emph{Start trip}, and stops the moment the
+  trip ends; between trips it shows an explicit ``not sharing'' state.
+  Location is therefore published only during an active trip.
+  \item \textbf{Background publishing.} Unlike the passenger app, the
+  driver app declares Android background-location permissions and runs
+  a foreground service, with the publishing task registered at the
+  global JavaScript scope so the operating system can invoke it even
+  when the screen is off. Each fix is posted to the authenticated
+  driver-location REST endpoint (FR-2), reading the active trip and
+  credentials from secure storage.
+  \item \textbf{Source selection in view.} The home screen carries the
+  \emph{bus device / my phone} source selector and, while live, shows
+  the driver the same telemetry the server sees---current speed, GPS
+  accuracy, and seconds since the last update---so a driver can confirm
+  at a glance that publishing is working.
+  \item \textbf{Role guarding.} Only accounts with the driver role can
+  proceed past login; any other account is refused inside the app.
+\end{itemize}
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.235\textwidth]{driver_shots/idle.jpg}\hfill
+\includegraphics[width=0.235\textwidth]{driver_shots/routemap.jpg}\hfill
+\includegraphics[width=0.235\textwidth]{driver_shots/live.jpg}\hfill
+\includegraphics[width=0.235\textwidth]{driver_shots/stops.jpg}
+\caption[Screens of the driver application]{The driver application.
+Left to right: (a) the idle state---nothing is shared until a trip is
+started; (b) the assigned trip's route map with the location-source
+selector (bus device / my phone) and the \emph{Start trip} control;
+(c) an active trip publishing \textsc{live}: next stop (11 of 17) with
+its ETA, current speed, GPS accuracy, seconds since the last update,
+and the \emph{End trip} control; (d) the stop-by-stop progress view
+with done/next/upcoming states, stop names rendered in both scripts.}
+\label{fig:driver}
+\end{figure}
+
 \section{Administration Console}
 \label{sec:impl-admin}
 The administration console is a server-rendered React application built
@@ -221,6 +270,8 @@ application server and its typed persistence layer, the dual push/poll
 Traccar integration with per-fix latency instrumentation, the
 arbitration and filtering services, the direct implementation of the ETA
 algorithm, the three lifecycle jobs, the bilingual passenger application
-with its four edge-condition behaviours, the administration console, the
-SMS-based tracker configuration, and the single-server deployment. The
-next chapter evaluates the deployed whole on the real fleet.
+with its four edge-condition behaviours, the dedicated driver
+application that implements the fallback publishing path, the
+administration console, the SMS-based tracker configuration, and the
+single-server deployment. The next chapter evaluates the deployed whole
+on the real fleet.
