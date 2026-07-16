@@ -120,6 +120,16 @@ can hand over from tracker to phone (or back) in the middle of a trip
 with no passenger-visible artefact: the canonical marker simply continues
 from the freshest healthy source. This satisfies FR-3 and NFR-2.
 
+Participation in the fallback path is deliberately \emph{opt-in per
+trip}: the phone enters arbitration only when a driver has been assigned
+to the trip and is actively sharing through the driver application. A
+trip scheduled without an assigned driver relies solely on the hardware
+tracker. This gate serves two purposes: it is an authorization
+boundary---no unassigned device can publish positions for a bus---and it
+keeps normal operation entirely free of any dependency on a driver's
+phone. What is automatic is therefore the \emph{selection} between the
+sources that are live, not the activation of the backup source itself.
+
 \section{Location-Quality Filtering Design}
 \label{sec:design-filter}
 Raw GPS cannot be displayed as-is. The design places a filtering pipeline
