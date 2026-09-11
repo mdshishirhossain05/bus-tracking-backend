@@ -44,13 +44,14 @@
 \begin{document}
 
 \title{UniBus Live: A Real-Time Bilingual University Bus\\
-Tracking System with Resilient Dual-Source GPS Acquisition}
+Tracking System with Reliable Dual-Source GPS Acquisition}
 
 \author{
-  % \IEEEauthorblockN{Md.\ Shishir Hossain, Md.\ Sajib Hassan, Md.\ Showkat Hossen}
+  \IEEEauthorblockN{Md.\ Shishir Hossain, Md.\ Sajib Hasan, Md.\ Showkat Hossen}
   \IEEEauthorblockA{\textit{Department of Computer Science and Engineering} \\
   \textit{NPI University of Bangladesh} \\
-  Manikganj, Dhaka, Bangladesh\\[2.3em]}
+  Manikganj, Dhaka, Bangladesh\\
+  \{mdshishirhossain3\}@gmail.com\\[0.6em]}
   % Supervisor: Mahbubur Rahman Chowdhury, Senior Lecturer
   % Corresponding author: mdshishirhossain3@gmail.com
 }
@@ -77,7 +78,7 @@ system in a seven-week pilot spanning 9 routes, 3 buses, and 71 completed
 trips, during which 46{,}548 GPS reports were ingested. The dual-source
 design was exercised in practice, with 64\% of trips tracked by hardware
 and 36\% by the smartphone fallback; median position-acquisition latency
-was 5.9~s. These results demonstrate the feasibility of resilient,
+was 5.9~s. These results demonstrate the feasibility of reliable,
 low-cost, real-time bus tracking for university transport.
 \end{abstract}
 
@@ -102,7 +103,7 @@ population.
 This paper presents \emph{UniBus Live}, a complete real-time tracking
 platform built specifically for university transport and deployed on a real
 campus fleet. The system is designed around three goals that distinguish it
-from a generic vehicle tracker. First, \emph{resilience}: positions come primarily from a fixed hardware
+from a generic vehicle tracker. First, \emph{reliability}: positions come primarily from a fixed hardware
 tracker that operates autonomously---no driver action, driver-owned device,
 or driver data connection is required---while an optional smartphone
 fallback can take over automatically when a hardware fix is unavailable, so
@@ -116,7 +117,7 @@ The contributions of this work are:
 \begin{itemize}
   \item An end-to-end, deployed architecture for real-time university bus
   tracking centred on an autonomous fixed GPS tracker with an optional,
-  health-arbitrated smartphone fallback, providing resilient coverage at
+  health-arbitrated smartphone fallback, providing reliable coverage at
   low cost.
   \item A lightweight geometric ETA estimator that projects the live
   vehicle position onto the route polyline and derives per-stop arrival
@@ -208,7 +209,7 @@ device ingestion and builds a passenger-facing, ETA-aware, bilingual
 application layer on top of it, rather than reimplementing low-level device
 communication. In contrast to single-source prototypes, simulation-only
 studies, and data-hungry prediction models, UniBus Live contributes a
-\emph{deployed}, low-cost system emphasizing source resilience, a
+\emph{deployed}, low-cost system emphasizing source reliability, a
 training-data-free ETA estimator, and a localized, edge-condition-aware
 passenger experience, evaluated on a real campus fleet.
 
@@ -350,17 +351,19 @@ Sections~\ref{sec:impl-arbitration}--\ref{sec:impl-eta}.}
 \end{figure}
 
 \subsection{Application Server}
-The server is implemented in TypeScript on Node.js using the Express
-framework. Persistence is provided by PostgreSQL through the Prisma
+The server is implemented in TypeScript on Node.js~\cite{nodejs} using the
+Express framework~\cite{express}. Persistence is provided by
+PostgreSQL~\cite{postgres} through the Prisma~\cite{prisma}
 object--relational mapper; the schema comprises 31 relational models
 organised into six functional domains (Fig.~\ref{fig:datamodel}): identity and
 authentication, fleet
 and devices, routing and scheduling, trip and tracking, communications and
-passenger, and audit and operations. An in-memory Redis instance serves two
+passenger, and audit and operations. An in-memory Redis~\cite{redis} instance serves two
 roles: a short-lived cache for hot read paths and the publish/subscribe
 back-plane for the WebSocket layer, letting the realtime tier scale
 horizontally without losing fan-out consistency.
-Realtime delivery uses Socket.IO, with each active trip represented as a
+Realtime delivery uses Socket.IO~\cite{socketio} over the WebSocket
+protocol~\cite{rfc6455}, with each active trip represented as a
 logical \emph{room}; a passenger tracking a trip joins that trip's room and
 thereafter receives only its events, bounding per-client traffic to the
 single vehicle being observed.
@@ -384,7 +387,9 @@ single vehicle being observed.
 \subsection{GPS-Acquisition Layer}
 Vehicle positions originate from two independent source types. The primary
 source is a fixed, vehicle-grade Concox~GT06S GPS/GSM tracker hard-wired to
-the bus, reporting to a self-hosted Traccar telematics server. An optional
+the bus---the satellite-positioning principles underlying such receivers are
+treated comprehensively in~\cite{kaplan}---reporting to a self-hosted Traccar
+telematics server. An optional
 secondary source is the driver's smartphone, which can publish location
 through an authenticated REST endpoint when no hardware fix is available;
 normal operation uses the tracker alone and requires no driver device,
@@ -399,12 +404,12 @@ server are self-hosted on a single low-cost virtual private server, keeping
 recurring infrastructure cost within a student-project budget.
 
 \subsection{Client Applications}
-The passenger application is built with React Native and Expo, rendering live
-vehicle and route geometry on a map. It uses a foreground location service
+The passenger application is built with React Native~\cite{reactnative} and
+Expo~\cite{expo}, rendering live vehicle and route geometry on a map. It uses a foreground location service
 for continued tracking while backgrounded and push notifications for alerts,
 and its interface is fully bilingual (English and Bangla); representative
 passenger screens are shown in Fig.~\ref{fig:screens}. The administration
-console is a server-rendered React (Next.js) application integrating the
+console is a server-rendered React (Next.js)~\cite{nextjs} application integrating the
 Google Maps JavaScript API for the live operations map and the route-builder
 tool; it also manages buses, GPS devices, schedules, and user roles through
 the same REST API.
@@ -426,7 +431,10 @@ priority rank, preferring a healthy hardware tracker but transparently
 falling back to the phone if the tracker goes silent. Because arbitration
 operates per fix, a bus can hand over between sources mid-trip without any
 passenger-visible artefact: the canonical marker simply continues from the
-freshest healthy source. Every accepted fix is also appended to a per-trip
+freshest healthy source. Fallback participation is opt-in per trip---the
+phone enters arbitration only when a driver is assigned to the trip and is
+actively publishing---so what is automatic is the \emph{selection} among live
+sources, while trips scheduled without a driver rely on the tracker alone. Every accepted fix is also appended to a per-trip
 location log, preserving the complete trajectory for later analysis.
 
 \begin{figure*}[t]
@@ -594,7 +602,7 @@ was 5.9\,s (mean 7.4\,s; 90th percentile 9.9\,s; 95th percentile 11.1\,s).
 This is bounded primarily by the 8\,s Traccar polling interval rather than by
 network transport. A further median 1.2\,s elapsed before a fix was persisted.
 
-\subsubsection{Source resilience}
+\subsubsection{Source reliability}
 The dual-source design was exercised in practice rather than remaining a
 theoretical safeguard: 64\% of trips (45 of 70 with a recorded source) were
 tracked via the fixed hardware tracker and 36\% (25) via the smartphone
@@ -670,7 +678,7 @@ Server         & Idle poll interval     & 8\,s & 60\,s \\
 \section{Conclusion and Future Work}
 \label{sec:conclusion}
 We presented UniBus Live, a deployed real-time university bus tracking system
-distinguished by resilient dual-source GPS acquisition, a lightweight
+distinguished by reliable dual-source GPS acquisition, a lightweight
 geometric ETA estimator, and a bilingual, edge-condition-aware passenger
 experience. A seven-week pilot on a real fleet demonstrated feasibility: the
 system ingested 46{,}548 GPS reports across 71 trips with a median acquisition
@@ -748,6 +756,33 @@ sparseness,'' in \textit{Proc. 17th ACM SIGSPATIAL Int. Conf. Advances in
 Geographic Information Systems}, 2009, pp.~336--343.
 \bibitem{traccar}
 ``Traccar: Open source GPS tracking platform.'' \url{https://www.traccar.org/}
+\bibitem{nodejs}
+OpenJS Foundation, ``Node.js.'' \url{https://nodejs.org/}
+\bibitem{express}
+OpenJS Foundation, ``Express web framework for Node.js.''
+\url{https://expressjs.com/}
+\bibitem{prisma}
+Prisma Data, Inc., ``Prisma ORM.'' \url{https://www.prisma.io/}
+\bibitem{postgres}
+PostgreSQL Global Development Group, ``PostgreSQL.''
+\url{https://www.postgresql.org/}
+\bibitem{redis}
+Redis Ltd., ``Redis.'' \url{https://redis.io/}
+\bibitem{socketio}
+Socket.IO, ``Socket.IO: bidirectional and low-latency communication.''
+\url{https://socket.io/}
+\bibitem{reactnative}
+Meta Platforms, Inc., ``React Native.'' \url{https://reactnative.dev/}
+\bibitem{expo}
+Expo, ``Expo: universal native apps with React.'' \url{https://expo.dev/}
+\bibitem{nextjs}
+Vercel, Inc., ``Next.js: the React framework.'' \url{https://nextjs.org/}
+\bibitem{kaplan}
+E.~D. Kaplan and C.~J. Hegarty, Eds., \textit{Understanding GPS/GNSS:
+Principles and Applications}, 3rd~ed. Norwood, MA, USA: Artech House, 2017.
+\bibitem{rfc6455}
+I.~Fette and A.~Melnikov, ``The WebSocket Protocol,'' IETF RFC~6455,
+Dec. 2011.
 \end{thebibliography}
 
 \end{document}
